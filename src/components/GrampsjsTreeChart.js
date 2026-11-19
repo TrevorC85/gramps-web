@@ -63,6 +63,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
     this.allParents = false
     this._linkInfo = new Map()
     this._linkRequest = 0
+    this._linkPending = false
     this._chart = new TreeChart()
   }
 
@@ -92,11 +93,13 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
     super.willUpdate(changed)
     if (
       this.allParents &&
-      (changed.has('data') ||
-        changed.has('allParents') ||
-        changed.has('grampsId'))
+      (changed.has('allParents') ||
+        changed.has('grampsId') ||
+        changed.has('nAnc'))
     ) {
       this._fetchLinkInfo()
+    } else if (this.allParents && changed.has('data')) {
+      this._fetchMissingLinkInfo()
     }
     if (!layoutProperties.some(name => changed.has(name))) {
       return
@@ -114,27 +117,50 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
     this._drawChart()
   }
 
-  // Collins: fetches the relation and confidence of the links, for the
-  // families the server's ancestor walk follows in one request, then for
-  // the families of expanded branches beyond it, if any
+  // Collins: fetches the relation and confidence of the links of the
+  // families the server's ancestor walk from the root person follows, in one
+  // request that does not wait for the people
   async _fetchLinkInfo() {
     this._linkRequest += 1
     const request = this._linkRequest
+    this._linkPending = true
     const info = await fetchLinkConfidence(
       this.appState,
       this.grampsId,
       this.nAnc
     )
-    const missing = this._graph.people().flatMap(person =>
-      this._graph
-        .parentFamilies(person.handle)
-        .slice(0, 2)
-        .filter(family => !info.has(`${family.handle}:${person.handle}`))
-        .map(family => family.handle)
-    )
-    if (missing.length > 0 && info.size > 0) {
-      await fetchFamilyLinkConfidence(this.appState, missing, info)
+    if (request !== this._linkRequest) {
+      return
     }
+    this._linkPending = false
+    this._linkInfo = info
+    this._fetchMissingLinkInfo()
+  }
+
+  // Collins: fetches the links of the people in the chart that the request
+  // for the root person did not cover, such as expanded branches
+  async _fetchMissingLinkInfo() {
+    if (this._linkPending || !this._linkInfo?.size) {
+      return
+    }
+    const request = this._linkRequest
+    // The families of the links drawn, as links beyond the last generation
+    // are not drawn
+    const links = this._computeLayout()?.links ?? []
+    const missing = links
+      .filter(link => link.meta?.family)
+      .filter(
+        link => !this._linkInfo.has(`${link.meta.family}:${link.source.handle}`)
+      )
+      .map(link => link.meta.family)
+    if (missing.length === 0) {
+      return
+    }
+    const info = await fetchFamilyLinkConfidence(
+      this.appState,
+      missing,
+      new Map(this._linkInfo)
+    )
     if (request === this._linkRequest) {
       this._linkInfo = info
     }
