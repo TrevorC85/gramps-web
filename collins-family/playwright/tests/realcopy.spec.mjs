@@ -56,7 +56,7 @@ test.describe.serial('real tree copy as owner', () => {
       const s = await chartState(page)
       await shot(page, `real_owner_I0009_${orientation}_${theme}`)
       expect(s.links.some(l => l.relation === 'Adopted')).toBe(true)
-      // Mike to Donna (in both parent families): one line, birth family's style
+      // The parent in both parent families: one line, birth family style
       const both = s.links.filter(l => l.families)
       expect(both).toHaveLength(1)
       expect(both[0].relation).toBe('Birth')
