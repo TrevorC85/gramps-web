@@ -138,8 +138,8 @@ export const getTree = (
 // is in both families is shown once. Each link has the parent's `handle`, an
 // `id` for the tree path, the `relation` (frel/mrel) of the child to the
 // parent, the `role`, the `family` handle, the family's index and count, and
-// the confidence `level` (0-4 or null), its `source` and `label` from
-// `linkInfo`.
+// the confidence `level` (0-4 or null), its source and `label` from
+// `linkInfo` (as `confSource`, since links have a `source` node).
 export function allParentLinks(graph, personHandle, linkInfo) {
   if (!personHandle) {
     return []
@@ -186,7 +186,7 @@ export function allParentLinks(graph, personHandle, linkInfo) {
         familyIndex,
         nFamilies: families.length,
         level: Number.isInteger(conf.level) ? conf.level : null,
-        source: conf.source ?? null,
+        confSource: conf.source ?? null,
         label: conf.label ?? '',
         known: Boolean(info),
       })

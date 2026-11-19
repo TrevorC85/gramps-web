@@ -8,8 +8,13 @@ import {
 } from '../charts/layout/treeLayout.js'
 import {GrampsjsChartBase} from './GrampsjsChartBase.js'
 import {rootRelatives} from './GrampsjsChartRelativesMenu.js'
-import {chartTransitionDuration, getImageUrl} from '../charts/util.js'
+import {
+  allParentLinks,
+  chartTransitionDuration,
+  getImageUrl,
+} from '../charts/util.js'
 import {getSymbols} from '../symbols.js'
+import {FamilyGraph} from '../charts/model/FamilyGraph.js'
 import {
   fetchLinkConfidence,
   levelLabels,
@@ -33,6 +38,7 @@ const layoutProperties = [
   'expanded',
   'allParents',
   '_linkInfo',
+  '_extraPeople',
 ]
 
 class GrampsjsTreeChart extends GrampsjsChartBase {
@@ -52,6 +58,7 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       // step/foster) and style links by relation and confidence
       allParents: {type: Boolean},
       _linkInfo: {state: true},
+      _extraPeople: {state: true},
     }
   }
 
@@ -67,6 +74,9 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
     this.allParents = false
     this._linkInfo = new Map()
     this._linkRequest = 0
+    // People in parent families other than the primary one, which the
+    // ancestor filter of the API does not follow
+    this._extraPeople = []
     this._chart = new TreeChart()
   }
 
@@ -151,8 +161,19 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
 
   willUpdate(changed) {
     super.willUpdate(changed)
-    if (this.allParents && (changed.has('data') || changed.has('allParents'))) {
-      this._fetchLinkInfo()
+    if (changed.has('data')) {
+      this._extraPeople = []
+    }
+    if (this._extraPeople.length > 0) {
+      this._graph = new FamilyGraph([...this.data, ...this._extraPeople])
+    }
+    if (
+      this.allParents &&
+      (changed.has('data') ||
+        changed.has('allParents') ||
+        changed.has('grampsId'))
+    ) {
+      this._fetchOtherParents()
     }
     if (!layoutProperties.some(name => changed.has(name))) {
       return
@@ -170,14 +191,75 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
     this._drawChart()
   }
 
-  // Collins prototype: fetches the relation and confidence of the links to
-  // all parent families of the fetched people
-  async _fetchLinkInfo() {
+  // Collins prototype: the API's ancestor filter only follows each person's
+  // primary parent family, so the parents in other parent families (such as
+  // adoptive parents) and their ancestors are fetched here, one generation
+  // per round, by handle. People the user may not see (private people for
+  // guests) are not returned by the API and stay unknown. Then the relation
+  // and confidence of the links are fetched.
+  async _fetchOtherParents() {
     this._linkRequest += 1
     const request = this._linkRequest
-    const families = this._graph
+    const extend =
+      'event_ref_list,primary_parent_family,family_list,parent_family_list'
+    const extra = []
+    const tried = new Set()
+    let graph = this._graph
+    for (let round = 0; round < this.nAnc; round += 1) {
+      const root = graph.personByGrampsId(this.grampsId)?.handle
+      if (!root) {
+        break
+      }
+      const missing = new Set()
+      let generation = [root]
+      for (let depth = 1; depth < this.nAnc && generation.length; depth += 1) {
+        const next = []
+        for (const handle of generation) {
+          for (const link of allParentLinks(graph, handle, null)) {
+            if (graph.person(link.handle)) {
+              next.push(link.handle)
+            } else if (!tried.has(link.handle)) {
+              missing.add(link.handle)
+            }
+          }
+        }
+        generation = next
+      }
+      if (missing.size === 0) {
+        break
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const fetched = await Promise.all(
+        [...missing].slice(0, 60).map(handle => {
+          tried.add(handle)
+          return this.appState.apiGet(
+            `/api/people/${handle}?profile=self&extend=${extend}`
+          )
+        })
+      )
+      if (request !== this._linkRequest) {
+        return
+      }
+      for (const response of fetched) {
+        if (response && 'data' in response && response.data?.handle) {
+          extra.push(response.data)
+        }
+      }
+      graph = new FamilyGraph([...this.data, ...extra])
+    }
+    if (extra.length > 0) {
+      this._extraPeople = extra
+      this._graph = graph
+    }
+    await this._fetchLinkInfo(request, graph)
+  }
+
+  // Collins prototype: fetches the relation and confidence of the links to
+  // all parent families of the fetched people
+  async _fetchLinkInfo(request, graph) {
+    const families = graph
       .people()
-      .flatMap(person => this._graph.parentFamilies(person.handle))
+      .flatMap(person => graph.parentFamilies(person.handle))
       .map(family => family.handle)
     const info = await fetchLinkConfidence(this.appState, families)
     if (request === this._linkRequest) {

@@ -23,9 +23,9 @@ export const relationColor = relation =>
   relationColors[relation] ?? otherRelationColor
 
 // Stroke widths for the Gramps confidence levels
-export const levelWidths = [1, 1.75, 2.75, 3.75, 5]
+export const levelWidths = [0.75, 1.75, 3, 4.5, 6.5]
 export const levelLabels = ['Very Low', 'Low', 'Normal', 'High', 'Very High']
-export const unknownWidth = 1.25
+export const unknownWidth = 1.5
 export const unknownDash = '5 4'
 
 export const hasLevel = link => Number.isInteger(link.level)
@@ -41,7 +41,7 @@ export function linkTitle(link) {
   const role = link.role === 'mother' ? 'mother' : 'father'
   const level = hasLevel(link)
     ? `${levelLabels[link.level]} (${link.level}/4) from ${
-        link.source === 'citation' ? 'citation' : 'confidence note'
+        link.confSource === 'citation' ? 'citation' : 'confidence note'
       }${link.label ? `: ${link.label}` : ''}`
     : 'no citation or confidence note'
   return `${link.relation} — ${role} link; confidence ${level}`

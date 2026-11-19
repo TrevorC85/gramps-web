@@ -18,7 +18,7 @@ const isBirth = link => link.relation === 'Birth'
 // leave the card side by side (`slot` of `slots`), and the links of a second
 // parent family turn at a different distance (`lane`), so the lines of
 // birth and adoptive parents do not overlap.
-const slotSpacing = 7
+const slotSpacing = 8
 const laneSpacing = 9
 
 function withSlots(links, vertical) {
@@ -31,9 +31,8 @@ function withSlots(links, vertical) {
   }
   return [...bySource.values()].flatMap(group =>
     group.map((link, slot) => ({
-      ...link,
       ...(link.meta ?? {}),
-      relation: link.relation,
+      ...link,
       styled: true,
       vertical,
       slot,
