@@ -576,10 +576,18 @@ describe('expanded branches', () => {
   it('fetches the people of the chart with those of the expanded branches', async () => {
     const {view, apiGet, expand} = makeBranchView()
     expand('F')
+    // Collins: the ancestor chart follows all parent families by default
+    // (link style setting on)
     expect(lastRules(apiGet)).toEqual([
-      {name: 'IsLessThanNthGenerationAncestorOf', values: ['I1', 4]},
+      {
+        name: 'IsLessThanNthGenerationAncestorOfAllFamilies',
+        values: ['I1', 4],
+      },
       {name: 'IsLessThanNthGenerationDescendantOf', values: ['I1', 2]},
-      {name: 'IsLessThanNthGenerationAncestorOf', values: ['I2', 2]},
+      {
+        name: 'IsLessThanNthGenerationAncestorOfAllFamilies',
+        values: ['I2', 2],
+      },
     ])
     // A second click while loading does not fetch again
     expand('F')

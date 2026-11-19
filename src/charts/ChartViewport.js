@@ -33,6 +33,17 @@ export class ChartViewport {
     this._clicked = undefined
   }
 
+  // Calls `listener(k)` with the zoom level whenever it changes. `name`
+  // identifies the listener, so it can be replaced.
+  onZoom(name, listener) {
+    this._zoom.on(`zoom.${name}`, event => listener(event.transform.k))
+  }
+
+  // The current zoom level
+  get scale() {
+    return zoomTransform(this._svg.node()).k
+  }
+
   // The top left corner of the view in viewBox coordinates, where content
   // that does not zoom or pan with the chart is placed
   get viewStart() {

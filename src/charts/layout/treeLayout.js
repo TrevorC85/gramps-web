@@ -1,6 +1,7 @@
 import {extent} from 'd3-array'
 import {hierarchy, tree} from 'd3-hierarchy'
 import {getDescendantTree, getTree} from '../util.js'
+import {legendBox, legendEntries} from '../linkStyle.js'
 
 // Dimensions for laying out tree charts, in SVG units
 export const treeLayoutDefaults = {
@@ -46,20 +47,37 @@ function layoutTree(
         ...(d.data.expandable
           ? {expandable: direction > 0 ? 'ancestors' : 'descendants'}
           : {}),
+        // Collins: parent families beyond the second, not shown
+        ...(d.data.moreFamilies ? {moreFamilies: d.data.moreFamilies} : {}),
       },
     ])
   )
+  const byKey = new Map([...nodes.values()].map(node => [node.key, node]))
   return {
     nodes: [...nodes.values()],
     // The target of each link carries the relation of the child to the
     // parent
-    links: root.links().map(({source, target}) => ({
-      source: nodes.get(source),
-      target: nodes.get(target),
-      relation: target.data.relation ?? 'Birth',
-      // Collins prototype: per-link family, role and confidence
-      ...(target.data.link ? {meta: target.data.link} : {}),
-    })),
+    links: [
+      ...root.links().map(({source, target}) => ({
+        source: nodes.get(source),
+        target: nodes.get(target),
+        relation: target.data.relation ?? 'Birth',
+        // Collins: per-link family, role and confidence
+        ...(target.data.link ? {meta: target.data.link} : {}),
+      })),
+      // Collins: the second link to a parent who is in both parent families
+      ...root.descendants().flatMap(d =>
+        (d.data.sharedLinks ?? [])
+          .filter(link => byKey.has(link.targetId))
+          .map(link => ({
+            source: nodes.get(d),
+            target: byKey.get(link.targetId),
+            relation: link.relation,
+            meta: link,
+            key: `${d.data.id}:shared:${link.id}`,
+          }))
+      ),
+    ],
   }
 }
 
@@ -105,8 +123,23 @@ export function layoutAncestors(
     linkInfo,
   })
   const layout = withBounds(layoutTree(data, 1, settings), settings)
-  // Collins prototype: links styled by relation and confidence
-  return allParents ? {...layout, styledLinks: true} : layout
+  if (!allParents) {
+    return layout
+  }
+  // Collins: links styled by relation and confidence, with a legend of the
+  // styles in use beside the root person's card, inside the bounds so that it
+  // never covers the chart and is part of SVG downloads
+  const root = layout.nodes.find(node => node.generation === 0)
+  const legend = legendBox(legendEntries(layout.links), root, settings)
+  const bounds = legend
+    ? {
+        xMin: Math.min(layout.bounds.xMin, legend.x),
+        xMax: Math.max(layout.bounds.xMax, legend.x + legend.width),
+        yMin: Math.min(layout.bounds.yMin, legend.y),
+        yMax: Math.max(layout.bounds.yMax, legend.y + legend.height),
+      }
+    : layout.bounds
+  return {...layout, bounds, legend, styledLinks: true}
 }
 
 export function layoutDescendants(

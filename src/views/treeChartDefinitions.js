@@ -39,8 +39,12 @@ import {chartNameDisplayFormat, menuSelectionHandler} from '../util.js'
 
 const treeExtend = 'event_ref_list,primary_parent_family,family_list'
 
-const ancestorRule = (grampsId, generations) => ({
-  name: 'IsLessThanNthGenerationAncestorOf',
+const ancestorRule = (grampsId, generations, allFamilies = false) => ({
+  // Collins: the rule of the Collins API fork that also follows adoptive,
+  // step and foster parent families (up to two per person)
+  name: allFamilies
+    ? 'IsLessThanNthGenerationAncestorOfAllFamilies'
+    : 'IsLessThanNthGenerationAncestorOf',
   values: [grampsId, generations],
 })
 
@@ -51,10 +55,12 @@ const descendantRule = (grampsId, generations) => ({
 
 // The person and their parents or children, for a branch that shows one
 // more generation
-const branchRule = ({grampsId, direction}) =>
-  direction === 'ancestors'
-    ? ancestorRule(grampsId, 2)
-    : descendantRule(grampsId, 2)
+const branchRule =
+  (allFamilies = false) =>
+  ({grampsId, direction}) =>
+    direction === 'ancestors'
+      ? ancestorRule(grampsId, 2, allFamilies)
+      : descendantRule(grampsId, 2)
 
 // Filter rules for the ancestors and descendants of a person, and for the
 // parents or children of the people in `branches`
@@ -62,14 +68,15 @@ function treeRules(
   grampsId,
   ancestorGenerations,
   descendantGenerations,
-  branches = []
+  branches = [],
+  allFamilies = false
 ) {
   return {
     function: 'or',
     rules: [
-      ancestorRule(grampsId, ancestorGenerations),
+      ancestorRule(grampsId, ancestorGenerations, allFamilies),
       descendantRule(grampsId, descendantGenerations),
-      ...branches.map(branchRule),
+      ...branches.map(branchRule(allFamilies)),
     ],
   }
 }
@@ -104,8 +111,8 @@ const orientationSetting = (key, {descendants = false} = {}) => ({
   default: 'horizontal',
 })
 
-// Collins prototype: whether the ancestor tree shows all parent families and
-// styles links by relation (colour) and confidence (width)
+// Collins: whether the ancestor tree shows up to two parent families per
+// person and styles links by relation (colour) and confidence (width)
 const linkStyleSetting = key => ({
   name: 'linkStyle',
   key,
@@ -226,9 +233,15 @@ export const chartDefinitions = {
     zoomable: true,
     exportable: true,
     request: (grampsId, {ancestors, linkStyle}, branches) => ({
-      rules: treeRules(grampsId, ancestors + 1, 2, branches),
-      // The prototype also needs the other parent families, such as
-      // adoptive parents
+      rules: treeRules(
+        grampsId,
+        ancestors + 1,
+        2,
+        branches,
+        linkStyle !== 'off'
+      ),
+      // Collins: the link style also needs the other parent families, such
+      // as adoptive parents
       extend:
         linkStyle === 'off' ? treeExtend : `${treeExtend},parent_family_list`,
     }),

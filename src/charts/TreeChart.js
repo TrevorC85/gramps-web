@@ -7,39 +7,18 @@ import {
 import {ChartCanvas, place} from './ChartCanvas.js'
 import {roundedPath, sameX} from './connectors.js'
 import {treeLayoutDefaults} from './layout/treeLayout.js'
-import {linkDash, linkTitle, linkWidth, relationColor} from './linkStyle.js'
+import {
+  drawLegend,
+  linkDash,
+  linkTitle,
+  linkWidth,
+  relationColor,
+} from './linkStyle.js'
+import {lanePath, withLanes} from './linkLanes.js'
 
 const {boxWidth, boxHeight} = treeLayoutDefaults
 
 const isBirth = link => link.relation === 'Birth'
-
-// Collins prototype. Each link of a styled layout is drawn whole, so that
-// its colour and width show along its full length. The links of one child
-// leave the card side by side (`slot` of `slots`), and the links of a second
-// parent family turn at a different distance (`lane`), so the lines of
-// birth and adoptive parents do not overlap.
-const slotSpacing = 8
-const laneSpacing = 9
-
-function withSlots(links, vertical) {
-  const bySource = new Map()
-  for (const link of links) {
-    if (!bySource.has(link.source.key)) {
-      bySource.set(link.source.key, [])
-    }
-    bySource.get(link.source.key).push(link)
-  }
-  return [...bySource.values()].flatMap(group =>
-    group.map((link, slot) => ({
-      ...(link.meta ?? {}),
-      ...link,
-      styled: true,
-      vertical,
-      slot,
-      slots: group.length,
-    }))
-  )
-}
 
 // Returns the coordinates of a point along the generations of a layout and
 // across them: x and y in columns, y and x in rows. The same swap turns them
@@ -188,6 +167,19 @@ export class TreeChart extends ChartCanvas {
     this._root = undefined
     this._vertical = undefined
     this._turned = false
+    // Collins: legend of the styled links, in chart units so it zooms and pans
+    // with the chart and is part of SVG downloads
+    this._legend = this._svg
+      .select('#chart-content')
+      .append('g')
+      .attr('class', 'link-legend')
+    this._interactive = true
+    this._translate = s => s
+    this.viewport.onZoom('link-style', k => {
+      if (this._styled && this._interactive) {
+        this._zoomLinks(this._links.selectAll('.link'), k)
+      }
+    })
   }
 
   get boxSize() {
@@ -199,6 +191,8 @@ export class TreeChart extends ChartCanvas {
   }
 
   prepare(layout, options) {
+    this._interactive = options.interactive
+    this._translate = options.translate ?? (s => s)
     const vertical = Boolean(layout.vertical)
     this._turned = this._vertical !== undefined && vertical !== this._vertical
     this._vertical = vertical
@@ -238,7 +232,18 @@ export class TreeChart extends ChartCanvas {
   }
 
   linkKey(treeLink) {
-    return this._keys.get(treeLink.target)
+    // Collins: a second link to a parent in both parent families
+    return treeLink.shared
+      ? `${this._keys.get(treeLink.target)}:shared`
+      : this._keys.get(treeLink.target)
+  }
+
+  // Collins: widths and dashes of styled links at zoom level `k`, which keep
+  // a minimum size on screen when zoomed out
+  _zoomLinks(links, k) {
+    links
+      .attr('stroke-width', link => linkWidth(link, k))
+      .attr('stroke-dasharray', link => linkDash(link, k))
   }
 
   enterNode(enter) {
@@ -254,7 +259,7 @@ export class TreeChart extends ChartCanvas {
   drawnLinks(layout) {
     this._styled = Boolean(layout.styledLinks)
     return layout.styledLinks
-      ? withSlots(layout.links, Boolean(layout.vertical))
+      ? withLanes(layout.links, Boolean(layout.vertical))
       : withSharedParts(layout.links, Boolean(layout.vertical))
   }
 
@@ -273,7 +278,7 @@ export class TreeChart extends ChartCanvas {
   // them, so that no line is drawn twice, which would show darker edges.
   linkPath([source, target], link) {
     if (link.styled) {
-      return this._styledLinkPath([source, target], link)
+      return lanePath([source, target], link, {boxWidth, boxHeight})
     }
     const {stem, bar, outer, vertical} = link
     // Points are given along the generations and across them
@@ -303,48 +308,23 @@ export class TreeChart extends ChartCanvas {
       : `${stemPath}${barPath}`
   }
 
-  // Collins prototype: a link from the child's card side by side with the
-  // child's other links, turning in its family's lane between the
-  // generations, to the parent's card
-  _styledLinkPath(
-    [source, target],
-    {vertical, slot, slots, familyIndex = 0, nFamilies = 1}
-  ) {
-    const point = (along, across) => generationAxes([along, across], vertical)
-    const [g0, s0] = generationAxes(source, vertical)
-    const [g1, s1] = generationAxes(target, vertical)
-    const inset = (vertical ? boxHeight : boxWidth) / 2 - 10
-    const direction = Math.sign(g1 - g0) || 1
-    const [a0, a1] = [g0 + direction * inset, g1 - direction * inset]
-    const across = s0 + (slot - (slots - 1) / 2) * slotSpacing
-    const middle =
-      (a0 + a1) / 2 +
-      direction * (familyIndex - (nFamilies - 1) / 2) * laneSpacing
-    return roundedPath([
-      point(a0, across),
-      point(middle, across),
-      point(middle, s1),
-      point(a1, s1),
-    ])
-  }
-
   styleLinks(links, palette) {
     if (this._styled) {
       this._links.attr('stroke', null).attr('stroke-width', null)
       links
-        .attr('stroke', link => relationColor(link.relation))
-        .attr('stroke-width', link => linkWidth(link))
-        .attr('stroke-dasharray', link => linkDash(link))
+        .attr('stroke', link => relationColor(link.relation, palette))
         .attr('stroke-linecap', 'butt')
         .attr('data-relation', link => link.relation)
         .attr('data-level', link =>
           Number.isInteger(link.level) ? link.level : 'none'
         )
+        .attr('data-shared', link => (link.shared ? 'true' : null))
+      this._zoomLinks(links, this._interactive ? this.viewport.scale : 1)
       links
         .selectAll('title')
         .data(link => [link])
         .join('title')
-        .text(link => linkTitle(link))
+        .text(link => linkTitle(link, this._translate))
       return
     }
     links
@@ -358,6 +338,65 @@ export class TreeChart extends ChartCanvas {
 
   drawExtras(nodes, options) {
     this._updateButtons(nodes, options)
+    this._updateMoreFamilies(nodes, options)
+    drawLegend(
+      this._legend,
+      this._layout?.styledLinks ? this._layout.legend : null,
+      options.palette,
+      this._translate
+    )
+  }
+
+  // Collins: a badge on the card of a person with parent families beyond the
+  // second, which are not shown
+  _updateMoreFamilies(nodes, {palette, translate = s => s}) {
+    const _ = translate
+    const badge = nodes
+      .selectChildren('.more-families')
+      .data(node => (node.moreFamilies?.length ? [node.moreFamilies] : []))
+      .join(enter => {
+        const g = enter.append('g').attr('class', 'more-families')
+        g.append('rect')
+        g.append('text')
+        g.append('title')
+        return g
+      })
+      .attr(
+        'transform',
+        `translate(${boxWidth / 2 - 72},${boxHeight / 2 - 20})`
+      )
+    badge
+      .select('rect')
+      .attr('width', 66)
+      .attr('height', 16)
+      .attr('rx', 8)
+      .attr('fill', palette.background)
+      .attr('stroke', palette.legendText)
+      .attr('stroke-dasharray', '3 2')
+    badge
+      .select('text')
+      .attr('x', 33)
+      .attr('y', 12)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 10.5)
+      .attr('fill', palette.legendText)
+      .text(
+        more =>
+          `+${more.length} ${more.length > 1 ? _('families') : _('family')}`
+      )
+    badge
+      .select('title')
+      .text(
+        more =>
+          `${_('Parent families not shown in this chart')}:\n${more
+            .map(
+              f =>
+                `${f.grampsId || f.family}: ${_('father')} ${_(f.frel)}, ${_(
+                  'mother'
+                )} ${_(f.mrel)}`
+            )
+            .join('\n')}`
+      )
   }
 
   // A button is a chevron pointing away from the card

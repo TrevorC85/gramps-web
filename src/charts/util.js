@@ -92,7 +92,7 @@ export const getTree = (
       : null
     const {father, mother} = graph.parents(personHandle)
     const hasParents = parentLinks
-      ? parentLinks.length > 0
+      ? parentLinks.links.length > 0
       : Boolean(father || mother)
     const [depthHere, path] = branchDepth(
       tree,
@@ -102,15 +102,27 @@ export const getTree = (
       expanded,
       onPath
     )
+    if (parentLinks?.more.length) {
+      tree.moreFamilies = parentLinks.more
+    }
     if (depthHere === 1) {
       return tree
     }
     if (parentLinks) {
-      tree.children = parentLinks.map(link => ({
+      tree.children = parentLinks.links.map(link => ({
         ...build(link.handle, depthHere - 1, i + 1, `${label}${link.id}`, path),
         relation: link.relation,
         link,
       }))
+      // A parent in both families: the second link goes to the same card
+      if (parentLinks.shared.length) {
+        tree.sharedLinks = parentLinks.shared.map(link => ({
+          ...link,
+          targetId: `${label}${
+            parentLinks.links.find(other => other.handle === link.handle).id
+          }`,
+        }))
+      }
       return tree
     }
     const relations = graph.parentRelations(personHandle)
@@ -132,17 +144,26 @@ export const getTree = (
   return build(handle, depth, 0, 'p', new Set())
 }
 
-// Collins prototype. Returns up to four parent links of a person: the
-// father and mother of up to two parent families (such as birth and
-// adoptive parents), the family whose links are all Birth first. A parent who
-// is in both families is shown once. Each link has the parent's `handle`, an
-// `id` for the tree path, the `relation` (frel/mrel) of the child to the
-// parent, the `role`, the `family` handle, the family's index and count, and
-// the confidence `level` (0-4 or null), its source and `label` from
-// `linkInfo` (as `confSource`, since links have a `source` node).
+// Collins: the parent links of a person for the relation/confidence link
+// style. Returns `{links, shared, more}`:
+//
+// - `links`: the father and mother of up to two parent families (such as
+//   birth and adoptive parents), the family whose links are all Birth first,
+//   each parent once;
+// - `shared`: the links of a parent who is in both families, for the second
+//   family, drawn to the same card;
+// - `more`: the parent families beyond the second, which are not shown, each
+//   with its `family` handle, `grampsId`, `frel` and `mrel`.
+//
+// Each link has the parent's `handle`, an `id` for the tree path, the
+// `relation` (frel/mrel) of the child to the parent, the `role`, the
+// `family` handle, the family's index and count, and the confidence `level`
+// (0-4 or null), its source (`confSource`, as links have a `source` node),
+// `label` and `disagree` from `linkInfo`.
 export function allParentLinks(graph, personHandle, linkInfo) {
+  const none = {links: [], shared: [], more: []}
   if (!personHandle) {
-    return []
+    return none
   }
   const childRefOf = family =>
     family.child_ref_list?.find(({ref}) => ref === personHandle) ?? {}
@@ -152,7 +173,7 @@ export function allParentLinks(graph, personHandle, linkInfo) {
       (ref.frel || 'Birth') === 'Birth' && (ref.mrel || 'Birth') === 'Birth'
     )
   }
-  const families = graph
+  const sorted = graph
     .parentFamilies(personHandle)
     .map((family, index) => ({family, index}))
     .sort(
@@ -161,20 +182,26 @@ export function allParentLinks(graph, personHandle, linkInfo) {
         a.index - b.index
     )
     .map(({family}) => family)
-    .slice(0, 2)
+  const families = sorted.slice(0, 2)
+  const more = sorted.slice(2).map(family => ({
+    family: family.handle,
+    grampsId: family.gramps_id ?? '',
+    frel: childRefOf(family).frel || 'Birth',
+    mrel: childRefOf(family).mrel || 'Birth',
+  }))
   const seen = new Set()
   const links = []
+  const shared = []
   families.forEach((family, familyIndex) => {
     const ref = childRefOf(family)
     const info = linkInfo?.get(`${family.handle}:${personHandle}`)
     for (const role of ['father', 'mother']) {
       const parent = family[`${role}_handle`]
-      if (!parent || seen.has(parent)) {
+      if (!parent) {
         continue
       }
-      seen.add(parent)
       const conf = info?.[role] ?? {}
-      links.push({
+      const link = {
         handle: parent,
         id: `${role[0]}${familyIndex || ''}`,
         relation:
@@ -188,11 +215,18 @@ export function allParentLinks(graph, personHandle, linkInfo) {
         level: Number.isInteger(conf.level) ? conf.level : null,
         confSource: conf.source ?? null,
         label: conf.label ?? '',
+        disagree: Boolean(conf.disagree),
         known: Boolean(info),
-      })
+      }
+      if (seen.has(parent)) {
+        shared.push({...link, shared: true})
+      } else {
+        seen.add(parent)
+        links.push(link)
+      }
     }
   })
-  return links
+  return {links, shared, more}
 }
 
 // Returns the descendants of the person with `handle` as a tree of `depth`

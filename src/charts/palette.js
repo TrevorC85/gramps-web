@@ -8,6 +8,9 @@ export const chartPalette = {
   text: 'var(--grampsjs-body-font-color-90)',
   // Opaque, so that links that run along each other look like one
   link: 'var(--grampsjs-chart-link)',
+  // Birth links of the relation/confidence link style (dark grey in the
+  // light theme, light grey in the dark one)
+  linkBirth: 'var(--grampsjs-body-font-color-70)',
   familyMarker: 'var(--grampsjs-chart-link)',
   familyMarkerFill: 'var(--grampsjs-chart-family-marker-fill)',
   triangle: 'var(--grampsjs-body-font-color-35)',
@@ -31,6 +34,7 @@ export const exportPalette = {
   personBox: '#e6e6e6',
   text: '#1a1a1a',
   link: '#999999',
+  linkBirth: '#4d4d4d',
   familyMarker: '#999999',
   familyMarkerFill: '#dcdcdc',
   triangle: '#a6a6a6',
