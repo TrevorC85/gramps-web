@@ -104,6 +104,20 @@ const orientationSetting = (key, {descendants = false} = {}) => ({
   default: 'horizontal',
 })
 
+// Collins prototype: whether the ancestor tree shows all parent families and
+// styles links by relation (colour) and confidence (width)
+const linkStyleSetting = key => ({
+  name: 'linkStyle',
+  key,
+  label: 'Parent links: relation colour and confidence width',
+  type: 'select',
+  options: [
+    {value: 'on', label: 'On (up to four parents)'},
+    {value: 'off', label: 'Off (standard tree)'},
+  ],
+  default: 'on',
+})
+
 const ancestorsSetting = (key, defaultValue) => ({
   name: 'ancestors',
   key,
@@ -206,13 +220,17 @@ export const chartDefinitions = {
       ancestorsSetting('treeChartAnc', 3),
       orientationSetting('treeChartOrientation'),
       nameDisplayFormatSetting('treeChartNameDisplayFormat'),
+      linkStyleSetting('treeChartLinkStyle'),
     ],
     editable: true,
     zoomable: true,
     exportable: true,
-    request: (grampsId, {ancestors}, branches) => ({
+    request: (grampsId, {ancestors, linkStyle}, branches) => ({
       rules: treeRules(grampsId, ancestors + 1, 2, branches),
-      extend: treeExtend,
+      // The prototype also needs the other parent families, such as
+      // adoptive parents
+      extend:
+        linkStyle === 'off' ? treeExtend : `${treeExtend},parent_family_list`,
     }),
     render: ({grampsId, values, data, canEdit, appState, expanded}) => html`
       <grampsjs-tree-chart
@@ -220,6 +238,8 @@ export const chartDefinitions = {
         grampsId=${grampsId}
         nAnc=${values.ancestors + 1}
         nDesc="2"
+        ?allParents=${values.linkStyle !== 'off'}
+        gapX=${values.linkStyle !== 'off' ? 70 : 30}
         ?vertical=${values.orientation === 'vertical'}
         nameDisplayFormat=${values.nameDisplayFormat}
         ?canEdit="${canEdit}"

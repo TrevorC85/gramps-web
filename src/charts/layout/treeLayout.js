@@ -57,6 +57,8 @@ function layoutTree(
       source: nodes.get(source),
       target: nodes.get(target),
       relation: target.data.relation ?? 'Birth',
+      // Collins prototype: per-link family, role and confidence
+      ...(target.data.link ? {meta: target.data.link} : {}),
     })),
   }
 }
@@ -94,11 +96,17 @@ function withBounds({nodes, links}, {vertical, boxWidth, boxHeight, padding}) {
 export function layoutAncestors(
   graph,
   handle,
-  {depth, expanded = new Set(), ...options}
+  {depth, expanded = new Set(), allParents = false, linkInfo = null, ...options}
 ) {
   const settings = {...treeLayoutDefaults, ...options}
-  const data = getTree(graph, handle, Math.max(depth, 1), false, {expanded})
-  return withBounds(layoutTree(data, 1, settings), settings)
+  const data = getTree(graph, handle, Math.max(depth, 1), false, {
+    expanded,
+    allParents,
+    linkInfo,
+  })
+  const layout = withBounds(layoutTree(data, 1, settings), settings)
+  // Collins prototype: links styled by relation and confidence
+  return allParents ? {...layout, styledLinks: true} : layout
 }
 
 export function layoutDescendants(

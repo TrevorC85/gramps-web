@@ -7,10 +7,40 @@ import {
 import {ChartCanvas, place} from './ChartCanvas.js'
 import {roundedPath, sameX} from './connectors.js'
 import {treeLayoutDefaults} from './layout/treeLayout.js'
+import {linkDash, linkTitle, linkWidth, relationColor} from './linkStyle.js'
 
 const {boxWidth, boxHeight} = treeLayoutDefaults
 
 const isBirth = link => link.relation === 'Birth'
+
+// Collins prototype. Each link of a styled layout is drawn whole, so that
+// its colour and width show along its full length. The links of one child
+// leave the card side by side (`slot` of `slots`), and the links of a second
+// parent family turn at a different distance (`lane`), so the lines of
+// birth and adoptive parents do not overlap.
+const slotSpacing = 7
+const laneSpacing = 9
+
+function withSlots(links, vertical) {
+  const bySource = new Map()
+  for (const link of links) {
+    if (!bySource.has(link.source.key)) {
+      bySource.set(link.source.key, [])
+    }
+    bySource.get(link.source.key).push(link)
+  }
+  return [...bySource.values()].flatMap(group =>
+    group.map((link, slot) => ({
+      ...link,
+      ...(link.meta ?? {}),
+      relation: link.relation,
+      styled: true,
+      vertical,
+      slot,
+      slots: group.length,
+    }))
+  )
+}
 
 // Returns the coordinates of a point along the generations of a layout and
 // across them: x and y in columns, y and x in rows. The same swap turns them
@@ -223,7 +253,10 @@ export class TreeChart extends ChartCanvas {
   }
 
   drawnLinks(layout) {
-    return withSharedParts(layout.links, Boolean(layout.vertical))
+    this._styled = Boolean(layout.styledLinks)
+    return layout.styledLinks
+      ? withSlots(layout.links, Boolean(layout.vertical))
+      : withSharedParts(layout.links, Boolean(layout.vertical))
   }
 
   linkEnds(treeLink) {
@@ -239,7 +272,11 @@ export class TreeChart extends ChartCanvas {
   // of one source on one side share the stem and the bar, which turns round
   // into the lines to the furthest targets. Each link draws its own parts of
   // them, so that no line is drawn twice, which would show darker edges.
-  linkPath([source, target], {stem, bar, outer, vertical}) {
+  linkPath([source, target], link) {
+    if (link.styled) {
+      return this._styledLinkPath([source, target], link)
+    }
+    const {stem, bar, outer, vertical} = link
     // Points are given along the generations and across them
     const point = (along, across) => generationAxes([along, across], vertical)
     const line = (...points) => `M${points.map(p => p.join(',')).join('L')}`
@@ -267,7 +304,55 @@ export class TreeChart extends ChartCanvas {
       : `${stemPath}${barPath}`
   }
 
+  // Collins prototype: a link from the child's card side by side with the
+  // child's other links, turning in its family's lane between the
+  // generations, to the parent's card
+  _styledLinkPath(
+    [source, target],
+    {vertical, slot, slots, familyIndex = 0, nFamilies = 1}
+  ) {
+    const point = (along, across) => generationAxes([along, across], vertical)
+    const [g0, s0] = generationAxes(source, vertical)
+    const [g1, s1] = generationAxes(target, vertical)
+    const inset = (vertical ? boxHeight : boxWidth) / 2 - 10
+    const direction = Math.sign(g1 - g0) || 1
+    const [a0, a1] = [g0 + direction * inset, g1 - direction * inset]
+    const across = s0 + (slot - (slots - 1) / 2) * slotSpacing
+    const middle =
+      (a0 + a1) / 2 +
+      direction * (familyIndex - (nFamilies - 1) / 2) * laneSpacing
+    return roundedPath([
+      point(a0, across),
+      point(middle, across),
+      point(middle, s1),
+      point(a1, s1),
+    ])
+  }
+
   styleLinks(links, palette) {
+    if (this._styled) {
+      this._links.attr('stroke', null).attr('stroke-width', null)
+      links
+        .attr('stroke', link => relationColor(link.relation))
+        .attr('stroke-width', link => linkWidth(link))
+        .attr('stroke-dasharray', link => linkDash(link))
+        .attr('stroke-linecap', 'butt')
+        .attr('data-relation', link => link.relation)
+        .attr('data-level', link =>
+          Number.isInteger(link.level) ? link.level : 'none'
+        )
+      links
+        .selectAll('title')
+        .data(link => [link])
+        .join('title')
+        .text(link => linkTitle(link))
+      return
+    }
+    links
+      .attr('stroke', null)
+      .attr('stroke-width', null)
+      .attr('stroke-linecap', null)
+    links.selectAll('title').remove()
     this._links.attr('stroke', palette.link).attr('stroke-width', 1.5)
     links.attr('stroke-dasharray', link => (isBirth(link) ? null : '6 4'))
   }

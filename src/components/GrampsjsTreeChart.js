@@ -10,6 +10,15 @@ import {GrampsjsChartBase} from './GrampsjsChartBase.js'
 import {rootRelatives} from './GrampsjsChartRelativesMenu.js'
 import {chartTransitionDuration, getImageUrl} from '../charts/util.js'
 import {getSymbols} from '../symbols.js'
+import {
+  fetchLinkConfidence,
+  levelLabels,
+  levelWidths,
+  otherRelationColor,
+  relationColors,
+  unknownDash,
+  unknownWidth,
+} from '../charts/linkStyle.js'
 
 // Properties that change the layout of the chart
 const layoutProperties = [
@@ -22,6 +31,8 @@ const layoutProperties = [
   'gapX',
   'vertical',
   'expanded',
+  'allParents',
+  '_linkInfo',
 ]
 
 class GrampsjsTreeChart extends GrampsjsChartBase {
@@ -37,6 +48,10 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       expanded: {type: Object},
       nameDisplayFormat: {type: String},
       canEdit: {type: Boolean},
+      // Collins prototype: show up to four parents (birth and adoptive or
+      // step/foster) and style links by relation and confidence
+      allParents: {type: Boolean},
+      _linkInfo: {state: true},
     }
   }
 
@@ -49,6 +64,9 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
     this.vertical = false
     // The handles of the people who show one more generation
     this.expanded = new Set()
+    this.allParents = false
+    this._linkInfo = new Map()
+    this._linkRequest = 0
     this._chart = new TreeChart()
   }
 
@@ -65,6 +83,63 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
           nameDisplayFormat=${this.nameDisplayFormat}
           .appState=${this.appState}
         ></grampsjs-chart-relatives-menu>
+        ${this.allParents ? this._renderLegend() : ''}
+      </div>
+    `
+  }
+
+  // Collins prototype: the legend of link colours and widths
+  _renderLegend() {
+    const line = (stroke, width, dash = null) => html`<svg
+      width="36"
+      height="12"
+      aria-hidden="true"
+    >
+      <line
+        x1="2"
+        x2="34"
+        y1="6"
+        y2="6"
+        stroke="${stroke}"
+        stroke-width="${width}"
+        stroke-dasharray="${dash ?? ''}"
+      ></line>
+    </svg>`
+    const relations = [
+      ...Object.entries(relationColors),
+      ['Other / custom', otherRelationColor],
+    ]
+    return html`
+      <div
+        id="link-legend"
+        style="position:absolute;left:12px;bottom:12px;padding:8px 12px;
+          background:var(--md-sys-color-surface, #fff);opacity:0.95;
+          border:1px solid var(--grampsjs-body-font-color-20, #ccc);
+          border-radius:8px;font-size:12px;line-height:18px;
+          color:var(--grampsjs-body-font-color, #222);pointer-events:none;"
+      >
+        <div style="font-weight:600">${this._('Relation (line colour)')}</div>
+        ${relations.map(
+          ([name, color]) => html`<div>${line(color, 3)} ${this._(name)}</div>`
+        )}
+        <div style="font-weight:600;margin-top:4px">
+          ${this._('Confidence (line width)')}
+        </div>
+        ${[4, 3, 2, 1, 0].map(
+          level =>
+            html`<div>
+              ${line('#4d4d4d', levelWidths[level])}
+              ${this._(levelLabels[level])} (${level})
+            </div>`
+        )}
+        <div>
+          ${line('#4d4d4d', unknownWidth, unknownDash)}
+          ${this._('No citation or confidence note')}
+        </div>
+        <div style="margin-top:4px;opacity:0.7;max-width:230px">
+          Width: highest citation confidence on the child reference; else the
+          link's confidence note.
+        </div>
       </div>
     `
   }
@@ -76,6 +151,9 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
 
   willUpdate(changed) {
     super.willUpdate(changed)
+    if (this.allParents && (changed.has('data') || changed.has('allParents'))) {
+      this._fetchLinkInfo()
+    }
     if (!layoutProperties.some(name => changed.has(name))) {
       return
     }
@@ -90,6 +168,21 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
 
   updated() {
     this._drawChart()
+  }
+
+  // Collins prototype: fetches the relation and confidence of the links to
+  // all parent families of the fetched people
+  async _fetchLinkInfo() {
+    this._linkRequest += 1
+    const request = this._linkRequest
+    const families = this._graph
+      .people()
+      .flatMap(person => this._graph.parentFamilies(person.handle))
+      .map(family => family.handle)
+    const info = await fetchLinkConfidence(this.appState, families)
+    if (request === this._linkRequest) {
+      this._linkInfo = info
+    }
   }
 
   _computeLayout() {
@@ -119,6 +212,8 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
       gapX: this.gapX,
       vertical: this.vertical,
       expanded: this.expanded,
+      allParents: this.allParents,
+      linkInfo: this._linkInfo,
     })
   }
 

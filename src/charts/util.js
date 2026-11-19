@@ -80,23 +80,37 @@ export const getTree = (
   handle,
   depth,
   includeEmpty = true,
-  {expanded = new Set()} = {}
+  {expanded = new Set(), allParents = false, linkInfo = null} = {}
 ) => {
   const build = (personHandle, generations, i, label, onPath) => {
     if (generations === 0) {
       return {}
     }
     const tree = treeNode(graph, personHandle, label, i)
+    const parentLinks = allParents
+      ? allParentLinks(graph, personHandle, linkInfo)
+      : null
     const {father, mother} = graph.parents(personHandle)
+    const hasParents = parentLinks
+      ? parentLinks.length > 0
+      : Boolean(father || mother)
     const [depthHere, path] = branchDepth(
       tree,
       personHandle,
       generations,
-      Boolean(personHandle && (father || mother)),
+      Boolean(personHandle && hasParents),
       expanded,
       onPath
     )
     if (depthHere === 1) {
+      return tree
+    }
+    if (parentLinks) {
+      tree.children = parentLinks.map(link => ({
+        ...build(link.handle, depthHere - 1, i + 1, `${label}${link.id}`, path),
+        relation: link.relation,
+        link,
+      }))
       return tree
     }
     const relations = graph.parentRelations(personHandle)
@@ -116,6 +130,69 @@ export const getTree = (
     return tree
   }
   return build(handle, depth, 0, 'p', new Set())
+}
+
+// Collins prototype. Returns up to four parent links of a person: the
+// father and mother of up to two parent families (such as birth and
+// adoptive parents), the family whose links are all Birth first. A parent who
+// is in both families is shown once. Each link has the parent's `handle`, an
+// `id` for the tree path, the `relation` (frel/mrel) of the child to the
+// parent, the `role`, the `family` handle, the family's index and count, and
+// the confidence `level` (0-4 or null), its `source` and `label` from
+// `linkInfo`.
+export function allParentLinks(graph, personHandle, linkInfo) {
+  if (!personHandle) {
+    return []
+  }
+  const childRefOf = family =>
+    family.child_ref_list?.find(({ref}) => ref === personHandle) ?? {}
+  const isBirthFamily = family => {
+    const ref = childRefOf(family)
+    return (
+      (ref.frel || 'Birth') === 'Birth' && (ref.mrel || 'Birth') === 'Birth'
+    )
+  }
+  const families = graph
+    .parentFamilies(personHandle)
+    .map((family, index) => ({family, index}))
+    .sort(
+      (a, b) =>
+        Number(isBirthFamily(b.family)) - Number(isBirthFamily(a.family)) ||
+        a.index - b.index
+    )
+    .map(({family}) => family)
+    .slice(0, 2)
+  const seen = new Set()
+  const links = []
+  families.forEach((family, familyIndex) => {
+    const ref = childRefOf(family)
+    const info = linkInfo?.get(`${family.handle}:${personHandle}`)
+    for (const role of ['father', 'mother']) {
+      const parent = family[`${role}_handle`]
+      if (!parent || seen.has(parent)) {
+        continue
+      }
+      seen.add(parent)
+      const conf = info?.[role] ?? {}
+      links.push({
+        handle: parent,
+        id: `${role[0]}${familyIndex || ''}`,
+        relation:
+          (role === 'father' ? ref.frel : ref.mrel) ||
+          (role === 'father' ? info?.frel : info?.mrel) ||
+          'Birth',
+        role,
+        family: family.handle,
+        familyIndex,
+        nFamilies: families.length,
+        level: Number.isInteger(conf.level) ? conf.level : null,
+        source: conf.source ?? null,
+        label: conf.label ?? '',
+        known: Boolean(info),
+      })
+    }
+  })
+  return links
 }
 
 // Returns the descendants of the person with `handle` as a tree of `depth`
