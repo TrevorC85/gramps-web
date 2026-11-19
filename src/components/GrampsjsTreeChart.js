@@ -147,12 +147,18 @@ class GrampsjsTreeChart extends GrampsjsChartBase {
     // The families of the links drawn, as links beyond the last generation
     // are not drawn
     const links = this._computeLayout()?.links ?? []
+    // (a parent in both families: one line for the links of both)
     const missing = links
-      .filter(link => link.meta?.family)
-      .filter(
-        link => !this._linkInfo.has(`${link.meta.family}:${link.source.handle}`)
+      .flatMap(link =>
+        [link.meta, ...(link.meta?.others ?? [])].map(meta => [
+          meta?.family,
+          link.source.handle,
+        ])
       )
-      .map(link => link.meta.family)
+      .filter(
+        ([family, child]) => family && !this._linkInfo.has(`${family}:${child}`)
+      )
+      .map(([family]) => family)
     if (missing.length === 0) {
       return
     }

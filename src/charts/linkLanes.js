@@ -1,13 +1,13 @@
 // Collins: the lines of the ancestor tree when each child-parent link is
 // drawn on its own (link style by relation and confidence, linkStyle.js).
 //
-// A child can have up to four parents (two parent families) and a parent can
-// be linked to the same child twice (a parent in both families). Each link
-// is drawn whole, so its colour and width show along its full length:
+// A child can have up to four parents (two parent families); a parent in
+// both families has one link (see `allParentLinks`). Each link is drawn
+// whole, so its colour and width show along its full length:
 //
 // - the links of one child leave its card side by side, one `slot` each,
-//   in the order of their parents' cards, and the links that end at one
-//   parent (a shared parent) arrive side by side, one `targetSlot` each;
+//   in the order of their parents' cards (should several links end at one
+//   card, they arrive side by side, one `targetOffset` each);
 // - between the generations each link turns in its own `lane`. Of the links
 //   that go up (or left in rows) the one to the nearest parent turns last,
 //   and the same for the ones that go down, so no two links of a child cross
@@ -54,7 +54,7 @@ export function withLanes(links, vertical) {
     lane: 0,
     lanes: 1,
   }))
-  // Shared parents: the links to one parent card arrive side by side
+  // Links that end at one card arrive side by side
   for (const group of groupBy(drawn, link => link.target.key)) {
     group.forEach((link, i) => {
       link.targetOffset = offsetOf(i, group.length)

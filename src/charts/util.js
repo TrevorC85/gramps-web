@@ -114,15 +114,6 @@ export const getTree = (
         relation: link.relation,
         link,
       }))
-      // A parent in both families: the second link goes to the same card
-      if (parentLinks.shared.length) {
-        tree.sharedLinks = parentLinks.shared.map(link => ({
-          ...link,
-          targetId: `${label}${
-            parentLinks.links.find(other => other.handle === link.handle).id
-          }`,
-        }))
-      }
       return tree
     }
     const relations = graph.parentRelations(personHandle)
@@ -145,13 +136,13 @@ export const getTree = (
 }
 
 // Collins: the parent links of a person for the relation/confidence link
-// style. Returns `{links, shared, more}`:
+// style. Returns `{links, more}`:
 //
 // - `links`: the father and mother of up to two parent families (such as
 //   birth and adoptive parents), the family whose links are all Birth first,
-//   each parent once;
-// - `shared`: the links of a parent who is in both families, for the second
-//   family, drawn to the same card;
+//   one link per parent. A parent in both families gets one link, styled by
+//   their Birth link if they have one (else by the first family's), with the
+//   other family's relationship and confidence in `others`;
 // - `more`: the parent families beyond the second, which are not shown, each
 //   with its `family` handle, `grampsId`, `frel` and `mrel`.
 //
@@ -161,7 +152,7 @@ export const getTree = (
 // (0-4 or null), its source (`confSource`, as links have a `source` node),
 // `label` and `disagree` from `linkInfo`.
 export function allParentLinks(graph, personHandle, linkInfo) {
-  const none = {links: [], shared: [], more: []}
+  const none = {links: [], more: []}
   if (!personHandle) {
     return none
   }
@@ -189,9 +180,8 @@ export function allParentLinks(graph, personHandle, linkInfo) {
     frel: childRefOf(family).frel || 'Birth',
     mrel: childRefOf(family).mrel || 'Birth',
   }))
-  const seen = new Set()
-  const links = []
-  const shared = []
+  // The links of each parent, in the order the parents first appear
+  const byParent = new Map()
   families.forEach((family, familyIndex) => {
     const ref = childRefOf(family)
     const info = linkInfo?.get(`${family.handle}:${personHandle}`)
@@ -218,15 +208,25 @@ export function allParentLinks(graph, personHandle, linkInfo) {
         disagree: Boolean(conf.disagree),
         known: Boolean(info),
       }
-      if (seen.has(parent)) {
-        shared.push({...link, shared: true})
-      } else {
-        seen.add(parent)
-        links.push(link)
+      if (!byParent.has(parent)) {
+        byParent.set(parent, [])
       }
+      byParent.get(parent).push(link)
     }
   })
-  return {links, shared, more}
+  const links = [...byParent.values()].map(all => {
+    if (all.length === 1) {
+      return all[0]
+    }
+    const main = all.find(link => link.relation === 'Birth') ?? all[0]
+    return {
+      ...main,
+      // The card keeps the place of the parent's first appearance
+      id: all[0].id,
+      others: all.filter(link => link !== main),
+    }
+  })
+  return {links, more}
 }
 
 // Returns the descendants of the person with `handle` as a tree of `depth`

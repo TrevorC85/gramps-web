@@ -232,10 +232,7 @@ export class TreeChart extends ChartCanvas {
   }
 
   linkKey(treeLink) {
-    // Collins: a second link to a parent in both parent families
-    return treeLink.shared
-      ? `${this._keys.get(treeLink.target)}:shared`
-      : this._keys.get(treeLink.target)
+    return this._keys.get(treeLink.target)
   }
 
   // Collins: widths and dashes of styled links at zoom level `k`, which keep
@@ -318,7 +315,10 @@ export class TreeChart extends ChartCanvas {
         .attr('data-level', link =>
           Number.isInteger(link.level) ? link.level : 'none'
         )
-        .attr('data-shared', link => (link.shared ? 'true' : null))
+        // A parent in both parent families: one line for both
+        .attr('data-families', link =>
+          link.others?.length ? 1 + link.others.length : null
+        )
       this._zoomLinks(links, this._interactive ? this.viewport.scale : 1)
       links
         .selectAll('title')

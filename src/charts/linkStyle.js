@@ -113,7 +113,36 @@ export function linkTitle(link, translate = s => s) {
       `${_('Confidence')}: ${_('none (no citation or confidence note)')}`
     )
   }
+  // A parent in both parent families: one line, styled by the link above
+  for (const other of link.others ?? []) {
+    lines.push(`${_('Also')}: ${otherSummary(other, _)}`)
+  }
   return lines.join('\n')
+}
+
+// One line about a parent's link in their other parent family, such as
+// "Adopted — 2nd parent family, Normal (2/4), confidence note “probable”"
+function otherSummary(link, _) {
+  const parts = [
+    `${_(link.relation)} — ${ordinal[link.familyIndex] ?? ''} ${_(
+      'parent family'
+    )}`,
+  ]
+  if (hasLevel(link)) {
+    const level = clampLevel(link.level)
+    const label = shortLabel(link.label)
+    parts.push(`${_(levelNames[level])} (${level}/4)`)
+    parts.push(
+      `${
+        link.confSource === 'citation' ? _('citation') : _('confidence note')
+      }${label ? ` “${label}”` : ''}${
+        link.disagree ? ` (${_('citations disagree')})` : ''
+      }`
+    )
+  } else {
+    parts.push(_('no confidence'))
+  }
+  return parts.join(', ')
 }
 
 // --------------------------------------------------------------- legend

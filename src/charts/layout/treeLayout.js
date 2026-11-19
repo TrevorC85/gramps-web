@@ -52,32 +52,17 @@ function layoutTree(
       },
     ])
   )
-  const byKey = new Map([...nodes.values()].map(node => [node.key, node]))
   return {
     nodes: [...nodes.values()],
     // The target of each link carries the relation of the child to the
     // parent
-    links: [
-      ...root.links().map(({source, target}) => ({
-        source: nodes.get(source),
-        target: nodes.get(target),
-        relation: target.data.relation ?? 'Birth',
-        // Collins: per-link family, role and confidence
-        ...(target.data.link ? {meta: target.data.link} : {}),
-      })),
-      // Collins: the second link to a parent who is in both parent families
-      ...root.descendants().flatMap(d =>
-        (d.data.sharedLinks ?? [])
-          .filter(link => byKey.has(link.targetId))
-          .map(link => ({
-            source: nodes.get(d),
-            target: byKey.get(link.targetId),
-            relation: link.relation,
-            meta: link,
-            key: `${d.data.id}:shared:${link.id}`,
-          }))
-      ),
-    ],
+    links: root.links().map(({source, target}) => ({
+      source: nodes.get(source),
+      target: nodes.get(target),
+      relation: target.data.relation ?? 'Birth',
+      // Collins: per-link family, role and confidence
+      ...(target.data.link ? {meta: target.data.link} : {}),
+    })),
   }
 }
 

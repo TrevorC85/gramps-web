@@ -196,7 +196,7 @@ describe('link style', () => {
 
 describe('allParentLinks', () => {
   it('puts the birth family first, shows four parents and counts a third family', () => {
-    const {links, shared, more} = allParentLinks(graph, 'C', info)
+    const {links, more} = allParentLinks(graph, 'C', info)
     expect(links.map(l => [l.handle, l.relation, l.level])).toEqual([
       ['BF', 'Birth', 4],
       ['BM', 'Birth', 4],
@@ -204,18 +204,63 @@ describe('allParentLinks', () => {
       ['AM', 'Stepchild', 1],
     ])
     expect(links.map(l => l.familyIndex)).toEqual([0, 0, 1, 1])
-    expect(shared).toEqual([])
+    expect(links.some(l => l.others)).toBe(false)
     expect(more).toEqual([
       {family: 'fX', grampsId: 'F0003', frel: 'Foster', mrel: 'Foster'},
     ])
   })
 
-  it('keeps both relationships of a parent in both families', () => {
-    const {links, shared} = allParentLinks(graph, 'BF', info)
+  it('gives a parent in both families one link, with the other family in `others`', () => {
+    const {links} = allParentLinks(graph, 'BF', info)
     expect(links.map(l => l.handle)).toEqual(['BFF', 'BFM', 'BFS'])
+    const [bff] = links
+    // Birth in both: the birth family's (first) link, level 0
+    expect([bff.relation, bff.level, bff.familyIndex]).toEqual(['Birth', 0, 0])
     expect(
-      shared.map(l => [l.handle, l.relation, l.level, l.familyIndex])
-    ).toEqual([['BFF', 'Birth', 3, 1]])
+      bff.others.map(l => [l.relation, l.level, l.familyIndex, l.family])
+    ).toEqual([['Birth', 3, 1, 'fBF2']])
+  })
+
+  it("styles a shared parent's line by their Birth link, else the first family's", () => {
+    // K: neither family is all Birth; P is Stepchild-father in the first and
+    // Birth-father in the second, Q is Adopted-mother in both
+    const k1 = fam('k1', 'P', 'Q', 'K', 'Stepchild', 'Adopted')
+    const k2 = fam('k2', 'P', 'Q', 'K', 'Birth', 'Adopted')
+    const g = new FamilyGraph([
+      person('K', [k1, k2]),
+      person('P', [], [k1, k2]),
+      person('Q', [], [k1, k2]),
+    ])
+    const kInfo = new Map([
+      ['k1:K', {father: conf(1, 'note', 'possible'), mother: conf(2)}],
+      ['k2:K', {father: conf(4), mother: conf(3)}],
+    ])
+    const {links} = allParentLinks(g, 'K', kInfo)
+    expect(links).toHaveLength(2)
+    const [p, q] = links
+    expect([p.handle, p.id, p.relation, p.level, p.family]).toEqual([
+      'P',
+      'f',
+      'Birth',
+      4,
+      'k2',
+    ])
+    expect(p.others.map(l => [l.relation, l.level])).toEqual([['Stepchild', 1]])
+    expect([q.handle, q.relation, q.level, q.family]).toEqual([
+      'Q',
+      'Adopted',
+      2,
+      'k1',
+    ])
+    expect(linkTitle(p)).toBe(
+      'Birth — Father (2nd parent family)\nConfidence: Very High (4/4)\nSource: citation\nAlso: Stepchild — 1st parent family, Low (1/4), confidence note “possible”'
+    )
+    const layout = layoutAncestors(g, 'K', {
+      depth: 2,
+      allParents: true,
+      linkInfo: kInfo,
+    })
+    expect(layout.links).toHaveLength(2)
   })
 })
 
@@ -255,13 +300,17 @@ describe.each([false, true])(
   vertical => {
     const layout = layoutOf(vertical)
 
-    it('has the links of four parents, the shared parent and the badge', () => {
+    it('has the links of four parents, one line to the shared parent and the badge', () => {
       expect(layout.styledLinks).toBe(true)
       const fromC = layout.links.filter(l => l.source.handle === 'C')
       expect(fromC.map(l => l.target.handle)).toEqual(['BF', 'BM', 'AF', 'AM'])
       const toBFF = layout.links.filter(l => l.target.handle === 'BFF')
-      expect(toBFF.map(l => l.meta.relation)).toEqual(['Birth', 'Birth'])
-      expect(toBFF.map(l => l.meta.level)).toEqual([0, 3])
+      expect(toBFF).toHaveLength(1)
+      expect([toBFF[0].meta.relation, toBFF[0].meta.level]).toEqual([
+        'Birth',
+        0,
+      ])
+      expect(toBFF[0].meta.others.map(l => l.level)).toEqual([3])
       expect(layout.nodes.find(n => n.key === 'p').moreFamilies).toHaveLength(1)
     })
 
@@ -390,7 +439,7 @@ describe('TreeChart with styled links', () => {
   const paths = [...svg.querySelectorAll('path.link')]
 
   it('draws every link with its colour, width and hover text', () => {
-    expect(paths).toHaveLength(12)
+    expect(paths).toHaveLength(11)
     const adopted = paths.find(
       p => p.getAttribute('data-relation') === 'Adopted'
     )
@@ -400,7 +449,13 @@ describe('TreeChart with styled links', () => {
     const none = paths.filter(p => p.getAttribute('data-level') === 'none')
     expect(none).toHaveLength(2)
     expect(none[0].getAttribute('stroke-dasharray')).toBe('6 4')
-    expect(paths.filter(p => p.getAttribute('data-shared'))).toHaveLength(1)
+    const both = paths.filter(p => p.getAttribute('data-families'))
+    expect(both).toHaveLength(1)
+    expect(both[0].getAttribute('data-families')).toBe('2')
+    expect(both[0].getAttribute('data-level')).toBe('0')
+    expect(both[0].querySelector('title').textContent).toContain(
+      'Also: Birth — 2nd parent family, High (3/4), citation'
+    )
   })
 
   it('draws the legend and the more-families badge', () => {
