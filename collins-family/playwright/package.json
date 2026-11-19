@@ -1,0 +1,17 @@
+{
+  "name": "collins-link-line-tests",
+  "version": "1.0.0",
+  "description": "Playwright tests of the tree link lines against local test instances only",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "^1.65.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  },
+  "private": true
+}
