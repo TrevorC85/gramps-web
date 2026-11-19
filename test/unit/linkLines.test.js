@@ -114,6 +114,7 @@ describe('link style', () => {
     expect(relationColor('Foster')).toBe('#009E73')
     expect(relationColor('Sponsored')).toBe('#CC79A7')
     expect(relationColor('Unknown')).toBe('#a3a3a3')
+    expect(relationColor('Hidden')).toBe('#a3a3a3')
     expect(relationColor('Guardianship')).toBe(otherRelationColor)
     expect(otherRelationColor).toBe('#D55E00')
   })
@@ -189,6 +190,20 @@ describe('link style', () => {
     expect(
       linkTitle({relation: 'Foster', role: 'mother', level: null})
     ).toContain('none (no citation or confidence note)')
+  })
+
+  it('shows a withheld relation as Hidden, neutral and in the legend', () => {
+    expect(
+      linkTitle({relation: 'Hidden', role: 'father', nFamilies: 1, level: null})
+    ).toMatch(/^Hidden — Father\n/)
+    const entries = legendEntries([
+      {relation: 'Birth'},
+      {relation: 'Hidden'},
+      {relation: 'Unknown'},
+    ])
+    expect(entries.relations).toEqual(['Birth', 'Unknown', 'Hidden'])
+    // not counted as a custom ("Other") relation
+    expect(legendEntries([{relation: 'Hidden'}]).relations).toEqual(['Hidden'])
   })
 })
 

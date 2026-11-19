@@ -17,6 +17,9 @@ export const relationColors = {
   Foster: '#009E73', // green
   Sponsored: '#CC79A7', // pink
   Unknown: '#a3a3a3', // light grey
+  // Collins: a living child's relation to its parents, withheld from guests
+  // by the API (LIVING_FIRST_NAME_ONLY); as neutral as Unknown
+  Hidden: '#a3a3a3', // light grey
 }
 export const otherRelationColor = '#D55E00' // red-orange, custom relations
 export const birthFallbackColor = '#4d4d4d'
