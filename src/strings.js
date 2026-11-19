@@ -938,6 +938,7 @@ export const grampsStrings = [
   'United States of America',
   'Unknown ',
   'Unknown',
+  'Hidden',
   'Unmarried',
   'Update',
   'Updating checksums on media',
