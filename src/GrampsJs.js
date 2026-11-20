@@ -17,6 +17,7 @@ import {
   TREE_CONFIG_APP_TITLE,
   TREE_CONFIG_PRIMARY_COLOR,
   TREE_CONFIG_SECONDARY_COLOR,
+  setForcedSettings,
 } from './api.js'
 import './dayjs_locales.js'
 import {
@@ -838,7 +839,10 @@ export class GrampsJs extends LitElement {
         return
       }
       if ('data' in data) {
+        // Collins: a home person forced by the server (Guest role)
+        setForcedSettings(data.data)
         this._updateAppState({dbInfo: data.data})
+        this._handleSettings()
         this._checkSearch()
         this._checkApiVersion()
         if (this.appState.dbInfo?.locale?.language !== undefined) {

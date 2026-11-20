@@ -92,6 +92,21 @@ export function getPermissions() {
   }
 }
 
+// Collins: settings the server forces on the current user, such as the home
+// person of the Guest role (metadata `guest_home_person`). They win over the
+// stored settings and are never written to localStorage.
+let forcedSettings = {}
+
+// Sets the forced settings from the /api/metadata/ response (or none)
+export function setForcedSettings(dbInfo) {
+  const homePerson = dbInfo?.guest_home_person
+  forcedSettings = homePerson ? {homePerson} : {}
+}
+
+export function getForcedSettings() {
+  return {...forcedSettings}
+}
+
 // grampsjs_settings are tree-independent settings
 // grampsjs_settings_tree are tree-dependendent settings
 // this function returns all of them without distinguishing
@@ -102,15 +117,19 @@ export function getSettings() {
     const settingStringTree = localStorage.getItem('grampsjs_settings_tree')
     const treeId = getTreeId() || 'unknown'
     const settingsTree = JSON.parse(settingStringTree)?.[treeId] || {}
-    return {...settings, ...settingsTree}
+    return {...settings, ...settingsTree, ...forcedSettings}
   } catch (e) {
-    return {}
+    return {...forcedSettings}
   }
 }
 
 // update the settings; if `tree` is true, update the tree-dependent settings
 // otherwise the tree-independent ones
 export function updateSettings(settings, tree = false) {
+  // forced settings cannot be changed by the user
+  settings = Object.fromEntries(
+    Object.entries(settings ?? {}).filter(([k]) => !(k in forcedSettings))
+  )
   const key = tree ? 'grampsjs_settings_tree' : 'grampsjs_settings'
   const settingString = localStorage.getItem(key)
   const parsedSettings = JSON.parse(settingString) || {}
