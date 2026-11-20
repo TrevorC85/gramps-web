@@ -216,6 +216,31 @@ class GrampsjsMap extends GrampsjsAppStateMixin(LitElement) {
           overflow: hidden;
           text-overflow: ellipsis;
         }
+        .grampsjs-place-details-popup .maplibregl-popup-content {
+          padding: 8px 28px 8px 12px;
+          border-radius: 12px;
+          font-size: 13px;
+          line-height: 1.45;
+          max-height: 40vh;
+          overflow-y: auto;
+          background: var(--md-sys-color-surface-container-high);
+          color: var(--md-sys-color-on-surface);
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+        }
+        .grampsjs-place-details-popup strong {
+          display: block;
+          font-weight: 500;
+          margin-bottom: 2px;
+        }
+        .grampsjs-place-details-popup .maplibregl-popup-close-button {
+          font-size: 18px;
+          color: var(--md-sys-color-on-surface);
+        }
+        .grampsjs-place-details-popup .maplibregl-popup-tip {
+          border-top-color: var(
+            --md-sys-color-surface-container-high
+          ) !important;
+        }
         .grampsjs-place-tooltip .maplibregl-popup-tip {
           border-top-color: var(
             --md-sys-color-surface-container-high

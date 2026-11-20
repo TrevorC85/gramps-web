@@ -42,6 +42,15 @@ import {
 import {WikidataBuildingsController} from '../wikidataBuildingsController.ts'
 import {countEventTypes, filterPlaces, yearRange} from '../mapFilters.js'
 import {PlaceVectorsController} from '../placeVectorsController.ts'
+import {
+  ALL_GENERATIONS,
+  ancestorCounts,
+  ancestorPins,
+  ancestorPlacesUrl,
+  generationColor,
+  pinBounds,
+  pinEntryText,
+} from '../mapAncestors.js'
 
 const EMPTY_ARRAY = []
 
@@ -99,6 +108,11 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       _hiddenOverlaysHandles: {type: Array},
       _overlayOpacity: {type: Object},
       _zoom: {type: Number},
+      _ancestorsOn: {type: Boolean},
+      _ancestorGenerations: {type: Number},
+      _ancestorData: {type: Object},
+      _ancestorLoading: {type: Boolean},
+      _ancestorError: {type: String},
     }
   }
 
@@ -144,6 +158,14 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     this._minYear = 1500
     this._pendingPlace = null
     this._pendingPerson = null
+    // "Show ancestors" on the person card: the event places of the selected
+    // person and their ancestors (Collins family). The switch and the
+    // generations stay as set when another person is selected.
+    this._ancestorsOn = false
+    this._ancestorGenerations = ALL_GENERATIONS
+    this._ancestorData = null
+    this._ancestorLoading = false
+    this._ancestorError = ''
     this._zoom = getMapViewport()?.zoom ?? DEFAULT_ZOOM
     this._wikidata = new WikidataBuildingsController(this)
     // KML, GPX and GeoJSON files of the selected place.
@@ -233,6 +255,13 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
   }
 
   _select(selection) {
+    if (
+      selection?.type !== 'person' ||
+      selection.person?.handle !== this._ancestorData?.handle
+    ) {
+      this._ancestorData = null
+      this._ancestorError = ''
+    }
     this._selection = selection
     this._hoveredPlace = ''
     this._placeVectors.cancel()
@@ -242,9 +271,24 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     return this._selection?.type === 'person' ? this._selection : null
   }
 
-  // The time filter does not apply while a person is selected.
+  // Whether the map shows the selected person's ancestor places.
+  get _ancestorMode() {
+    return Boolean(this._personSelection) && this._ancestorsOn
+  }
+
+  // The time filter does not apply while a person is selected, unless the
+  // map shows their ancestors' places.
   get _timeFilterActive() {
-    return this._timeFilter && !this._personSelection
+    return this._timeFilter && (!this._personSelection || this._ancestorMode)
+  }
+
+  // The filters (time and event types) apply to the ancestor places.
+  get _ancestorPins() {
+    if (!this._ancestorMode || !this._ancestorData) return EMPTY_ARRAY
+    return ancestorPins(this._ancestorData, {
+      years: yearRange(this._year, this._yearSpan, this._timeFilter),
+      eventTypes: this._eventTypes,
+    })
   }
 
   // The slider has an effect while it filters or dates the historical map.
@@ -267,6 +311,16 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       long: obj.profile.long,
     })
 
+    if (this._ancestorMode && this._ancestorData) {
+      return this._ancestorPins.map(pin => ({
+        handle: pin.handle,
+        name: pin.name,
+        lat: pin.lat,
+        long: pin.long,
+        color: pin.color,
+        details: pin.entries.map(pinEntryText),
+      }))
+    }
     const personSelection = this._personSelection
     if (personSelection) {
       const personHandles = new Set(personSelection.placeHandles)
@@ -320,8 +374,11 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         >${this._renderLayers()} ${this._renderVectorLayers()}
         ${this._renderWikidataLayer()}
         <grampsjs-map-person-lines-layer
-          .events="${personData?.extended?.events ?? EMPTY_ARRAY}"
-          .places="${personData ? this._dataPlaces : EMPTY_ARRAY}"
+          .events="${(!this._ancestorMode && personData?.extended?.events) ||
+          EMPTY_ARRAY}"
+          .places="${personData && !this._ancestorMode
+            ? this._dataPlaces
+            : EMPTY_ARRAY}"
         ></grampsjs-map-person-lines-layer>
         <grampsjs-map-places-layer
           .places="${this._placesForMap}"
@@ -345,7 +402,8 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         ?timeFilter="${this._timeFilter}"
         .eventTypes="${this._availableEventTypes}"
         .selectedEventTypes="${this._eventTypes}"
-        ?filtersSuspended="${Boolean(this._personSelection)}"
+        ?filtersSuspended="${Boolean(this._personSelection) &&
+        !this._ancestorMode}"
         value="${this._valueSearch}"
         >${this._renderPlaceDetails()}</grampsjs-map-searchbox
       >
@@ -395,9 +453,80 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         handle="${data ? person.handle : ''}"
         name="${personProfileDisplayName(person.profile)}"
         .personData="${data}"
+        .ancestors="${this._ancestorBoxState}"
         .appState="${this.appState}"
+        @map:ancestors-change="${this._handleAncestorsChange}"
       ></grampsjs-person-box>
     `
+  }
+
+  // What the person card shows about the ancestor places.
+  get _ancestorBoxState() {
+    const on = this._ancestorsOn
+    const pins = this._ancestorPins
+    const data = this._ancestorData
+    return {
+      on,
+      generations: this._ancestorGenerations,
+      loading: on && this._ancestorLoading,
+      error: on ? this._ancestorError : '',
+      counts: on && data ? ancestorCounts(data, pins) : null,
+      legend: [...new Set(pins.map(pin => pin.generation))]
+        .sort((a, b) => a - b)
+        .map(generation => ({generation, color: generationColor(generation)})),
+    }
+  }
+
+  _handleAncestorsChange(e) {
+    const {on, generations} = e.detail
+    if (on !== undefined) this._ancestorsOn = on
+    if (generations !== undefined) this._ancestorGenerations = generations
+    const selection = this._personSelection
+    if (!selection) return
+    if (this._ancestorsOn) {
+      this._fetchAncestors(selection)
+    } else {
+      this._ancestorData = null
+      this._ancestorError = ''
+      this._fitPersonPlaces(selection.placeHandles)
+    }
+  }
+
+  async _fetchAncestors(selection) {
+    const generations = this._ancestorGenerations
+    const lang = this.appState.i18n.lang || 'en'
+    this._ancestorLoading = true
+    this._ancestorError = ''
+    const data = await this.appState.apiGet(
+      ancestorPlacesUrl(selection.person.handle, generations, lang)
+    )
+    // Ignore the response if the selection, the switch or the generations
+    // changed in the meantime.
+    if (
+      this._selection?.person?.handle !== selection.person.handle ||
+      !this._ancestorsOn ||
+      this._ancestorGenerations !== generations
+    ) {
+      return
+    }
+    this._ancestorLoading = false
+    if ('data' in data) {
+      this._ancestorData = data.data
+      this._fitAncestorPins()
+    } else {
+      this._ancestorData = null
+      this._ancestorError = data.error || this._('Error')
+    }
+  }
+
+  _fitAncestorPins() {
+    const pins = this._ancestorPins
+    if (pins.length === 0) return
+    if (pins.length === 1) {
+      this.flyTo(pins[0].lat, pins[0].long)
+      return
+    }
+    this._mapEl?.fitBounds(pinBounds(pins))
   }
 
   _handleLayerChange(e) {
@@ -550,7 +679,11 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       .map(event => event.place)
       .filter(Boolean)
     this._select({...selection, data: extPerson, placeHandles})
-    this._fitPersonPlaces(placeHandles)
+    if (this._ancestorsOn) {
+      this._fetchAncestors(this._selection)
+    } else {
+      this._fitPersonPlaces(placeHandles)
+    }
   }
 
   _fitPersonPlaces(handles) {
@@ -981,7 +1114,9 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       this._dataPlaces = data.data
       this._applyPlaceFilter()
       const personPlaceHandles = this._personSelection?.placeHandles ?? []
-      if (personPlaceHandles.length) {
+      if (this._ancestorMode && this._ancestorData) {
+        this._fitAncestorPins()
+      } else if (personPlaceHandles.length) {
         this._fitPersonPlaces(personPlaceHandles)
       } else if (!this._highlightedHandles.length && !getMapViewport()) {
         const center = this._getMapCenter()

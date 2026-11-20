@@ -17,6 +17,30 @@ class GrampsjsMapPlacesLayer extends LitElement {
     this._map = null
     this._handlersAdded = false
     this._popup = null
+    this._clickPopup = null
+  }
+
+  // A place can carry `color` (pin colour) and `details` (lines listed in
+  // its popup, e.g. who had which event there); such a pin shows the
+  // details on hover and, on click, in a popup that stays open, instead of
+  // selecting the place.
+  _placeByHandle(handle) {
+    return (this.places || []).find(p => p.handle === handle)
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  _popupContent(place) {
+    const root = document.createElement('div')
+    root.className = 'grampsjs-place-details'
+    const title = document.createElement('strong')
+    title.textContent = place.name ?? ''
+    root.appendChild(title)
+    for (const line of place.details) {
+      const div = document.createElement('div')
+      div.textContent = line
+      root.appendChild(div)
+    }
+    return root
   }
 
   // No shadow DOM — this component renders no UI.
@@ -44,10 +68,33 @@ class GrampsjsMapPlacesLayer extends LitElement {
         offset: 15,
         className: 'grampsjs-place-tooltip',
       })
+      this._detailsPopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 15,
+        maxWidth: '320px',
+        className: 'grampsjs-place-details-popup',
+      })
       map.on('click', 'places-layer', e => {
         const feature = e.features?.[0]
         if (!feature) return
         e.originalEvent.stopPropagation()
+        const place = this._placeByHandle(feature.properties.handle)
+        if (place?.details) {
+          this._detailsPopup.remove()
+          this._clickPopup?.remove()
+          this._clickPopup = new maplibregl.Popup({
+            closeButton: true,
+            closeOnClick: true,
+            offset: 15,
+            maxWidth: '320px',
+            className: 'grampsjs-place-details-popup',
+          })
+            .setLngLat(feature.geometry.coordinates.slice())
+            .setDOMContent(this._popupContent(place))
+            .addTo(map)
+          return
+        }
         fireEvent(this, 'map:marker-clicked', {
           handle: feature.properties.handle,
         })
@@ -57,6 +104,15 @@ class GrampsjsMapPlacesLayer extends LitElement {
         const feature = e.features?.[0]
         if (!feature || feature.properties.highlighted) return
         const coords = feature.geometry.coordinates.slice()
+        const place = this._placeByHandle(feature.properties.handle)
+        if (place?.details) {
+          if (this._clickPopup?.isOpen()) return
+          this._detailsPopup
+            .setLngLat(coords)
+            .setDOMContent(this._popupContent(place))
+            .addTo(map)
+          return
+        }
         this._popup
           .setLngLat(coords)
           .setText(feature.properties.name)
@@ -65,6 +121,7 @@ class GrampsjsMapPlacesLayer extends LitElement {
       map.on('mouseleave', 'places-layer', () => {
         map.getCanvas().style.cursor = ''
         this._popup.remove()
+        this._detailsPopup.remove()
       })
     }
   }
@@ -92,6 +149,7 @@ class GrampsjsMapPlacesLayer extends LitElement {
 
   updated(changed) {
     if (changed.has('places') || changed.has('highlightedHandles')) {
+      if (changed.has('places')) this._clickPopup?.remove()
       this._updateSource()
     }
   }
@@ -119,6 +177,7 @@ class GrampsjsMapPlacesLayer extends LitElement {
         properties: {
           handle: place.handle,
           name: place.name,
+          color: place.color ?? null,
           highlighted: (this.highlightedHandles || []).includes(place.handle),
           anyHighlighted,
         },
@@ -133,7 +192,7 @@ class GrampsjsMapPlacesLayer extends LitElement {
         .trim() || '#ea4335'
     return {
       'circle-radius': ['case', ['get', 'highlighted'], 14, 9],
-      'circle-color': markerColor,
+      'circle-color': ['coalesce', ['get', 'color'], markerColor],
       'circle-opacity': [
         'case',
         ['get', 'highlighted'],
