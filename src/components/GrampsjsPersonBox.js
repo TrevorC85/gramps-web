@@ -1,13 +1,16 @@
 import {html, css} from 'lit'
 
 import '@material/web/button/text-button.js'
+import '@material/web/switch/switch.js'
 
 import './GrampsjsGallery.js'
 import './GrampsjsEvents.js'
+import './GrampsjsChipChoice.js'
 import {GrampsjsConnectedComponent} from './GrampsjsConnectedComponent.js'
 import {fireEvent, personProfileDisplayName} from '../util.js'
 import {sharedStyles} from '../SharedStyles.js'
 import {getSymbols} from '../symbols.js'
+import {ANCESTOR_GENERATIONS, generationLabel} from '../mapAncestors.js'
 
 export class GrampsjsPersonBox extends GrampsjsConnectedComponent {
   static get styles() {
@@ -56,6 +59,55 @@ export class GrampsjsPersonBox extends GrampsjsConnectedComponent {
           color: var(--md-sys-color-on-surface-variant);
           margin-top: 6px;
         }
+
+        .ancestors {
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-radius: 12px;
+          background: var(--md-sys-color-surface-container);
+          font-size: 14px;
+        }
+
+        .ancestors label.switch {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          font-weight: 500;
+          cursor: pointer;
+        }
+
+        .ancestors .sub {
+          color: var(--md-sys-color-on-surface-variant);
+          margin: 10px 0 4px;
+        }
+
+        .ancestors .counts p {
+          margin: 4px 0;
+        }
+
+        .ancestors .warn {
+          color: var(--md-sys-color-on-surface-variant);
+        }
+
+        .legend {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px 12px;
+          margin-top: 8px;
+          font-size: 13px;
+        }
+
+        .legend span.dot {
+          display: inline-block;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          margin-right: 5px;
+          border: 1px solid #fff;
+          box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+          vertical-align: -1px;
+        }
       `,
     ]
   }
@@ -66,6 +118,9 @@ export class GrampsjsPersonBox extends GrampsjsConnectedComponent {
       name: {type: String},
       // Pre-fetched person data from parent; when set, skips the internal fetch.
       personData: {type: Object},
+      // The map's ancestor places: null hides the switch, otherwise
+      // {on, generations, loading, error, counts, legend: [{generation, color}]}
+      ancestors: {type: Object},
     }
   }
 
@@ -74,6 +129,7 @@ export class GrampsjsPersonBox extends GrampsjsConnectedComponent {
     this.handle = ''
     this.name = ''
     this.personData = null
+    this.ancestors = null
   }
 
   getUrl() {
@@ -114,6 +170,7 @@ export class GrampsjsPersonBox extends GrampsjsConnectedComponent {
             </p>`
           : ''}
       </div>
+      ${this._renderAncestors()}
       ${person.media_list?.length
         ? html`
             <h3>${this._('Gallery')}</h3>
@@ -144,6 +201,89 @@ export class GrampsjsPersonBox extends GrampsjsConnectedComponent {
         >
       </div>
     `
+  }
+
+  _renderAncestors() {
+    const a = this.ancestors
+    if (!a) return ''
+    return html`
+      <div class="ancestors">
+        <label class="switch">
+          <span>${this._('Show ancestors')}</span>
+          <md-switch
+            ?selected="${a.on}"
+            aria-label="${this._('Show ancestors')}"
+            @change="${this._handleAncestorsSwitch}"
+          ></md-switch>
+        </label>
+        ${a.on
+          ? html`
+              <div class="sub">${this._('Generations')}</div>
+              <grampsjs-chip-choice
+                .options="${ANCESTOR_GENERATIONS.map(n => ({
+                  value: n,
+                  label: n > 0 ? `${n}` : this._('All'),
+                }))}"
+                .selected="${a.generations}"
+                ariaLabel="${this._('Generations')}"
+                @chip-choice:change="${this._handleAncestorsGenerations}"
+              ></grampsjs-chip-choice>
+              ${this._renderAncestorCounts(a)}
+            `
+          : ''}
+      </div>
+    `
+  }
+
+  _renderAncestorCounts(a) {
+    if (a.loading) {
+      return html`<div class="counts"><p>${this._('Loading...')}</p></div>`
+    }
+    if (a.error) {
+      return html`<div class="counts"><p class="warn">${a.error}</p></div>`
+    }
+    if (!a.counts) return ''
+    const c = a.counts
+    return html`
+      <div class="counts">
+        <p>
+          ${this._('%s ancestors', c.ancestors)} ·
+          ${this._('%s places on the map', c.shownPlaces)}
+        </p>
+        ${c.placesWithoutCoordinates > 0
+          ? html`<p class="warn">
+              ${this._(
+                '%s places left off the map: no coordinates yet',
+                c.placesWithoutCoordinates
+              )}
+            </p>`
+          : ''}
+        ${c.eventsWithoutPlace > 0
+          ? html`<p class="warn">
+              ${this._('%s events without a place', c.eventsWithoutPlace)}
+            </p>`
+          : ''}
+      </div>
+      <div class="legend">
+        ${(a.legend ?? []).map(
+          item => html`<span
+            ><span class="dot" style="background:${item.color}"></span
+            >${generationLabel(item.generation, (s, ...args) =>
+              this._(s, ...args)
+            )}</span
+          >`
+        )}
+      </div>
+    `
+  }
+
+  _handleAncestorsSwitch(e) {
+    fireEvent(this, 'map:ancestors-change', {on: e.target.selected})
+  }
+
+  _handleAncestorsGenerations(e) {
+    e.stopPropagation()
+    fireEvent(this, 'map:ancestors-change', {generations: e.detail.value})
   }
 
   renderLoading() {
