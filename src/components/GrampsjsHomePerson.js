@@ -36,6 +36,8 @@ export class GrampsjsHomePerson extends GrampsjsAppStateMixin(LitElement) {
   }
 
   render() {
+    // Collins: the server fixes the home person for guests
+    const fixed = Boolean(this.appState?.dbInfo?.guest_home_person)
     return html`
       <h3>${this._('Home Person')}</h3>
 
@@ -45,7 +47,7 @@ export class GrampsjsHomePerson extends GrampsjsAppStateMixin(LitElement) {
               <grampsjs-search-result-list
                 large
                 linked
-                metaIcon="${mdiPencil}"
+                metaIcon="${fixed ? '' : mdiPencil}"
                 .appState="${this.appState}"
                 ?loading="${!this.homePersonDetails?.handle}"
                 numberLoading="1"
@@ -57,6 +59,8 @@ export class GrampsjsHomePerson extends GrampsjsAppStateMixin(LitElement) {
               </grampsjs-search-result-list>
             </div>
           `
+        : fixed
+        ? ''
         : html` <md-text-button trailing-icon @click="${this._handleEditClick}">
             ${this._('Set _Home Person')}
             <svg viewBox="0 0 24 24" slot="icon">
@@ -76,13 +80,16 @@ export class GrampsjsHomePerson extends GrampsjsAppStateMixin(LitElement) {
   }
 
   _handleEditClick(e) {
+    if (this.appState?.dbInfo?.guest_home_person) {
+      return
+    }
     const anchor = e.detail?.sourceElement ?? e.currentTarget
     this.renderRoot.querySelector('#homeperson-select')?.open(anchor)
   }
 
   _handleHomePerson(e) {
     const obj = e.detail.objects[0]
-    if (obj.object?.gramps_id) {
+    if (obj.object?.gramps_id && !this.appState?.dbInfo?.guest_home_person) {
       this.appState.updateSettings({homePerson: obj.object.gramps_id}, true)
       this.homePersonDetails = obj.object
     }

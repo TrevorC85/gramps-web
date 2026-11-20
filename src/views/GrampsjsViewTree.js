@@ -925,6 +925,10 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
   }
 
   _renderHomePersonPicker() {
+    // Collins: the server fixes the home person for guests
+    if (this.appState.dbInfo?.guest_home_person) {
+      return ''
+    }
     return html`
       <md-outlined-button id="select-home-person" @click="${this._openPicker}">
         <grampsjs-icon
@@ -952,7 +956,7 @@ export class GrampsjsViewTree extends GrampsjsStaleDataMixin(GrampsjsView) {
 
   _handleHomePerson(e) {
     const grampsId = e.detail.objects[0]?.object?.gramps_id
-    if (grampsId) {
+    if (grampsId && !this.appState.dbInfo?.guest_home_person) {
       this.appState.updateSettings({homePerson: grampsId}, true)
     }
     e.preventDefault()
