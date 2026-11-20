@@ -221,8 +221,6 @@ class GrampsjsMap extends GrampsjsAppStateMixin(LitElement) {
           border-radius: 12px;
           font-size: 13px;
           line-height: 1.45;
-          max-height: 40vh;
-          overflow-y: auto;
           background: var(--md-sys-color-surface-container-high);
           color: var(--md-sys-color-on-surface);
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
@@ -231,6 +229,42 @@ class GrampsjsMap extends GrampsjsAppStateMixin(LitElement) {
           display: block;
           font-weight: 500;
           margin-bottom: 2px;
+        }
+        .grampsjs-place-details-popup .lines {
+          max-height: min(30vh, 260px);
+          overflow-y: auto;
+          overscroll-behavior: contain;
+        }
+        .grampsjs-place-details-popup .sub {
+          font-size: 12px;
+          opacity: 0.75;
+          margin-bottom: 4px;
+        }
+        .grampsjs-place-details-popup .group {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-weight: 500;
+          margin: 6px 0 2px;
+        }
+        .grampsjs-place-details-popup .group .dot {
+          display: inline-block;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          flex: none;
+        }
+        .grampsjs-place-details-popup .place-link {
+          display: block;
+          margin: 8px 0 0 auto;
+          padding: 4px 8px;
+          border: none;
+          border-radius: 8px;
+          background: transparent;
+          color: var(--md-sys-color-primary);
+          font: inherit;
+          font-weight: 500;
+          cursor: pointer;
         }
         .grampsjs-place-details-popup .maplibregl-popup-close-button {
           font-size: 18px;

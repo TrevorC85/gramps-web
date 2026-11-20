@@ -44,13 +44,22 @@ import {countEventTypes, filterPlaces, yearRange} from '../mapFilters.js'
 import {PlaceVectorsController} from '../placeVectorsController.ts'
 import {
   ALL_GENERATIONS,
+  GENERATION_COLORS,
   ancestorCounts,
   ancestorPins,
   ancestorPlacesUrl,
+  generationColor,
+  generationLabel,
   pinBounds,
   pinEntryText,
   pinLegend,
 } from '../mapAncestors.js'
+import {
+  eventProfileUrls,
+  eventsByPlaceMatching,
+  groupByGeneration,
+  regularEntries,
+} from '../mapDots.js'
 
 const EMPTY_ARRAY = []
 
@@ -121,6 +130,10 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     this._dataPlaces = []
     this._dataEvents = []
     this._filteredPlaces = []
+    // the events per place that match the filters (dot sizes and counts)
+    this._matchingEventsByPlace = new Map()
+    this._translate = (...args) => this._(...args)
+    this._popupInsetsFn = () => this._popupInsets()
     this._dataLayers = []
     const layerSettings = getMapLayerSettings()
     // The Wikidata building layer is off until the user switches it on.
@@ -302,7 +315,36 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     return EMPTY_ARRAY
   }
 
+  // The places for the map, recomputed only when an input changes, so the
+  // places layer keeps its open popup across unrelated re-renders.
   get _placesForMap() {
+    const key = [
+      this._ancestorMode,
+      this._ancestorData,
+      this._personSelection,
+      this._dataPlaces,
+      this._filteredPlaces,
+      this._matchingEventsByPlace,
+      this._year,
+      this._yearSpan,
+      this._timeFilter,
+      this._eventTypes,
+      this._highlightedHandles.join(','),
+    ]
+    const last = this._placesForMapMemo
+    if (
+      last &&
+      last.key.length === key.length &&
+      last.key.every((k, i) => k === key[i])
+    ) {
+      return last.value
+    }
+    const value = this._computePlacesForMap()
+    this._placesForMapMemo = {key, value}
+    return value
+  }
+
+  _computePlacesForMap() {
     const highlightedHandles = new Set(this._highlightedHandles)
     const toMapPlace = obj => ({
       handle: obj.handle,
@@ -318,7 +360,13 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         lat: pin.lat,
         long: pin.long,
         color: pin.color,
-        details: pin.entries.map(pinEntryText),
+        count: pin.entries.length,
+        groups: groupByGeneration(pin.entries, {
+          labelFor: g => generationLabel(g, (...a) => this._(...a)),
+          colorFor: generationColor,
+          lineFor: pinEntryText,
+          maxGeneration: GENERATION_COLORS.length - 1,
+        }),
       }))
     }
     const personSelection = this._personSelection
@@ -339,9 +387,16 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         highlightedHandles.has(place.handle) &&
         !filteredHandles.has(place.handle)
     )
+    const matching = this._matchingEventsByPlace ?? new Map()
     return [...this._filteredPlaces, ...highlightedFilteredPlaces]
       .filter(p => this._hasCoords(p))
-      .map(toMapPlace)
+      .map(obj => {
+        const events = matching.get(obj.handle) ?? EMPTY_ARRAY
+        const place = {...toMapPlace(obj), count: events.length}
+        if (events.length)
+          place.loadDetails = () => this._loadPlaceDetails(events)
+        return place
+      })
   }
 
   renderContent() {
@@ -383,6 +438,8 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
         <grampsjs-map-places-layer
           .places="${this._placesForMap}"
           .highlightedHandles="${this._highlightedHandles}"
+          .translate="${this._translate}"
+          .insets="${this._popupInsetsFn}"
         ></grampsjs-map-places-layer
       ></grampsjs-map>
       ${this._wikidataVisible && this._zoom < WIKIDATA_MIN_ZOOM
@@ -539,6 +596,22 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
   // Padding for fitting pins so that the search panel with the person card
   // does not cover them: beside the panel on wide screens; on narrow ones,
   // where it spans the map, below the search bar (narrow: true).
+  // The room at the top of the map an open popup should keep free: on
+  // phones the search panel spans the width (search bar, chevron or card),
+  // at most 45% of the map; on wider screens the search bar's height.
+  _popupInsets() {
+    const p = this._panelPadding()
+    if (!p?.narrow) return {top: 84}
+    const panelEl = this._searchbox?.shadowRoot?.querySelector('#container')
+    const panel = panelEl?.getBoundingClientRect?.()
+    const box = this.renderRoot
+      ?.querySelector?.('grampsjs-map')
+      ?.getBoundingClientRect?.()
+    if (!panel || !box) return {top: 84}
+    const top = Math.round(panel.bottom - box.top + 8)
+    return {top: Math.max(84, Math.min(top, Math.round(box.height * 0.45)))}
+  }
+
   _panelPadding() {
     const PAD = 40
     // the search box's host has no size; its panel is positioned inside
@@ -1036,14 +1109,35 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
   }
 
   _applyPlaceFilter() {
+    const filters = {
+      years: yearRange(this._year, this._yearSpan, this._timeFilter),
+      eventTypes: this._eventTypes,
+    }
+    this._matchingEventsByPlace = eventsByPlaceMatching(
+      this._eventsByPlace ?? new Map(),
+      filters
+    )
     this._filteredPlaces = filterPlaces(
       this._dataPlaces,
       this._eventsByPlace ?? new Map(),
-      {
-        years: yearRange(this._year, this._yearSpan, this._timeFilter),
-        eventTypes: this._eventTypes,
-      }
+      filters
     )
+  }
+
+  // The popup groups of a regular dot: who had which event there, from the
+  // event profiles the API gives this user (so guests see what the API shows
+  // guests, e.g. first names only for living people).
+  async _loadPlaceDetails(events) {
+    const lang = this.appState.i18n.lang || 'en'
+    const profiles = new Map()
+    for (const url of eventProfileUrls(events, lang)) {
+      // eslint-disable-next-line no-await-in-loop
+      const data = await this.appState.apiGet(url)
+      if (!('data' in data)) throw new Error(data.error || 'error')
+      for (const event of data.data) profiles.set(event.handle, event.profile)
+    }
+    const entries = regularEntries(events, profiles, t => this._(t))
+    return [{lines: entries.map(pinEntryText)}]
   }
 
   firstUpdated() {
@@ -1162,7 +1256,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
 
   async _fetchEvents() {
     const data = await this.appState.apiGet(
-      '/api/events/?keys=date,handle,place,type'
+      '/api/events/?keys=date,gramps_id,handle,place,type'
     )
     this.loading = false
     if ('data' in data) {

@@ -617,7 +617,7 @@ describe('map view: filters', () => {
     })
     await view._fetchEvents()
     expect(view.appState.apiGet).toHaveBeenCalledWith(
-      '/api/events/?keys=date,handle,place,type'
+      '/api/events/?keys=date,gramps_id,handle,place,type'
     )
     expect(view._availableEventTypes).to.deep.equal([
       {type: 'Birth', count: 2},
