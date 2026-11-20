@@ -379,6 +379,35 @@ describe('places layer: sized dots with counts', () => {
     expect(map.panBy).not.toHaveBeenCalled()
   })
 
+  it("keeps the view's panel inset free (phones: chevron or card)", () => {
+    const layer = document.createElement('grampsjs-map-places-layer')
+    const map = {
+      panBy: vi.fn(),
+      getContainer: () => ({
+        getBoundingClientRect: () => ({
+          top: 0,
+          bottom: 800,
+          left: 0,
+          right: 400,
+        }),
+      }),
+    }
+    layer._map = map
+    layer.insets = () => ({top: 180})
+    layer._keepPopupInView({
+      isOpen: () => true,
+      getElement: () => ({
+        getBoundingClientRect: () => ({
+          top: 150,
+          bottom: 450,
+          left: 50,
+          right: 350,
+        }),
+      }),
+    })
+    expect(map.panBy.mock.lastCall[0]).to.deep.equal([0, -30])
+  })
+
   it('popup: count, groups with colour dots, place button for regular dots', () => {
     const layer = document.createElement('grampsjs-map-places-layer')
     layer.translate = (s, n) => s.replace('%s', n)

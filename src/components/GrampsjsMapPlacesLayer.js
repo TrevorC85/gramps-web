@@ -32,6 +32,9 @@ class GrampsjsMapPlacesLayer extends LitElement {
       highlightedHandles: {type: Array},
       // the view's translate function `_`
       translate: {attribute: false},
+      // a function giving {top} in px: the room the view's panels take at
+      // the top of the map, kept free above an open popup
+      insets: {attribute: false},
     }
   }
 
@@ -40,6 +43,7 @@ class GrampsjsMapPlacesLayer extends LitElement {
     this.places = []
     this.highlightedHandles = []
     this.translate = s => s
+    this.insets = null
     this._map = null
     this._handlersAdded = false
     this._popup = null
@@ -130,14 +134,20 @@ class GrampsjsMapPlacesLayer extends LitElement {
   }
 
   // Pans the map so an open popup is fully visible and not under the
-  // search bar at the top (TOP_MARGIN).
+  // search bar at the top (insets, else TOP_MARGIN).
   _keepPopupInView(popup) {
     const map = this._map
     const el = popup?.getElement?.()
     if (!map || !el || !popup.isOpen()) return
     const box = map.getContainer().getBoundingClientRect()
     const r = el.getBoundingClientRect()
-    const top = box.top + TOP_MARGIN
+    let inset = TOP_MARGIN
+    try {
+      inset = this.insets?.()?.top ?? TOP_MARGIN
+    } catch (e) {
+      // keep the default
+    }
+    const top = box.top + inset
     const bottom = box.bottom - SIDE_MARGIN
     let dy = 0
     if (r.top < top) dy = r.top - top

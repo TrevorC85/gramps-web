@@ -133,6 +133,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     // the events per place that match the filters (dot sizes and counts)
     this._matchingEventsByPlace = new Map()
     this._translate = (...args) => this._(...args)
+    this._popupInsetsFn = () => this._popupInsets()
     this._dataLayers = []
     const layerSettings = getMapLayerSettings()
     // The Wikidata building layer is off until the user switches it on.
@@ -438,6 +439,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
           .places="${this._placesForMap}"
           .highlightedHandles="${this._highlightedHandles}"
           .translate="${this._translate}"
+          .insets="${this._popupInsetsFn}"
         ></grampsjs-map-places-layer
       ></grampsjs-map>
       ${this._wikidataVisible && this._zoom < WIKIDATA_MIN_ZOOM
@@ -594,6 +596,22 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
   // Padding for fitting pins so that the search panel with the person card
   // does not cover them: beside the panel on wide screens; on narrow ones,
   // where it spans the map, below the search bar (narrow: true).
+  // The room at the top of the map an open popup should keep free: on
+  // phones the search panel spans the width (search bar, chevron or card),
+  // at most 45% of the map; on wider screens the search bar's height.
+  _popupInsets() {
+    const p = this._panelPadding()
+    if (!p?.narrow) return {top: 84}
+    const panelEl = this._searchbox?.shadowRoot?.querySelector('#container')
+    const panel = panelEl?.getBoundingClientRect?.()
+    const box = this.renderRoot
+      ?.querySelector?.('grampsjs-map')
+      ?.getBoundingClientRect?.()
+    if (!panel || !box) return {top: 84}
+    const top = Math.round(panel.bottom - box.top + 8)
+    return {top: Math.max(84, Math.min(top, Math.round(box.height * 0.45)))}
+  }
+
   _panelPadding() {
     const PAD = 40
     // the search box's host has no size; its panel is positioned inside
