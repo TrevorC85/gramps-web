@@ -355,8 +355,11 @@ describe('map view: show ancestors', () => {
     expect(places.map(p => p.handle)).to.have.members(['P1', 'P2'])
     const alpha = places.find(p => p.handle === 'P1')
     expect(alpha.color).to.equal(generationColor(0))
-    expect(alpha.details).to.include(
+    expect(alpha.groups.flatMap(g => g.lines)).to.include(
       'Otto Muster & Olga Muster · Marriage · 1945'
+    )
+    expect(alpha.count).to.equal(
+      alpha.groups.reduce((n, g) => n + g.lines.length, 0)
     )
     // no panel size known here: no padding of its own
     expect(map.fitBounds.mock.lastCall[1]).to.deep.equal({})
@@ -578,10 +581,10 @@ describe('places layer: coloured pins with details', () => {
     const layer = document.createElement('grampsjs-map-places-layer')
     const el = layer._popupContent({
       name: 'Alpha',
-      details: ['<b>Anna</b>, Birth, 1950', 'Otto, Death'],
+      groups: [{lines: ['<b>Anna</b>, Birth, 1950', 'Otto, Death']}],
     })
     expect(el.querySelector('strong').textContent).to.equal('Alpha')
-    expect(el.querySelectorAll('div')).to.have.length(2)
+    expect(el.querySelectorAll('div.line')).to.have.length(2)
     expect(el.querySelector('b')).to.equal(null)
     expect(el.textContent).to.contain('<b>Anna</b>, Birth, 1950')
   })
