@@ -391,6 +391,18 @@ describe('map view: show ancestors', () => {
     expect(view._placesForMap.map(p => p.handle)).to.deep.equal(['P2'])
   })
 
+  it('folds the card (phones) when switched on, not for a generations chip', async () => {
+    const {view} = makeView()
+    const fit = vi.spyOn(view, '_fitAncestorPins')
+    await selectPerson(view)
+    view._handleAncestorsChange({detail: {on: true}})
+    await flushPromises()
+    expect(fit).toHaveBeenLastCalledWith({collapse: true})
+    view._handleAncestorsChange({detail: {generations: 3}})
+    await flushPromises()
+    expect(fit).toHaveBeenLastCalledWith({collapse: false})
+  })
+
   it('a generations choice reloads with that limit', async () => {
     const {view} = makeView()
     await selectPerson(view)

@@ -482,7 +482,9 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     const selection = this._personSelection
     if (!selection) return
     if (this._ancestorsOn) {
-      this._fetchAncestors(selection)
+      // fold the card away on phones only when the switch is turned on, not
+      // when a generations chip in the card is tapped
+      this._fetchAncestors(selection, {collapse: on === true})
     } else {
       this._ancestorData = null
       this._ancestorError = ''
@@ -490,7 +492,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     }
   }
 
-  async _fetchAncestors(selection) {
+  async _fetchAncestors(selection, {collapse = false} = {}) {
     const generations = this._ancestorGenerations
     const lang = this.appState.i18n.lang || 'en'
     this._ancestorLoading = true
@@ -510,7 +512,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     this._ancestorLoading = false
     if ('data' in data) {
       this._ancestorData = data.data
-      this._fitAncestorPins({collapse: true})
+      this._fitAncestorPins({collapse})
     } else {
       this._ancestorData = null
       this._ancestorError = data.error || this._('Error')
