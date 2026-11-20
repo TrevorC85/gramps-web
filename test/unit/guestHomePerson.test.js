@@ -1,6 +1,7 @@
 // Collins: home person forced by the server for the Guest role
 import {describe, it, expect, beforeEach, afterEach} from 'vitest'
 import {
+  forgetLoadedForcedSettings,
   getForcedSettings,
   getSettings,
   setForcedSettings,
@@ -43,6 +44,24 @@ describe('guest home person', () => {
     // after logging in as someone else, their own setting is back
     setForcedSettings({})
     expect(getSettings().homePerson).toBe('I0006')
+  })
+
+  it('applies the forced home person after a reload, for the same user only', () => {
+    const jwt = sub =>
+      `x.${btoa(JSON.stringify({sub, tree: 't1', exp: 9999999999}))}.sig`
+    localStorage.setItem('access_token', jwt('guest-id'))
+    updateSettings({homePerson: 'I0006'}, true)
+    setForcedSettings({guest_home_person: 'I0016'})
+    // a fresh page: the module state is gone, the metadata not loaded yet
+    forgetLoadedForcedSettings()
+    expect(getSettings().homePerson).toBe('I0016')
+    // someone else logs in in the same browser
+    localStorage.setItem('access_token', jwt('owner-id'))
+    forgetLoadedForcedSettings()
+    expect(getSettings().homePerson).not.toBe('I0016')
+    // their metadata has no forced home person: the memory is cleared
+    setForcedSettings({})
+    expect(localStorage.getItem('grampsjs_forced_settings')).toBeNull()
   })
 
   it('hides the edit controls of the dashboard card for guests', async () => {
