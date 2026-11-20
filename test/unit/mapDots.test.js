@@ -351,6 +351,34 @@ describe('places layer: sized dots with counts', () => {
     ).to.equal(true)
   })
 
+  it('pans the map so an open popup is not under the search bar or cut off', () => {
+    const layer = document.createElement('grampsjs-map-places-layer')
+    const rect = (top, bottom, left = 100, right = 300) => ({
+      top,
+      bottom,
+      left,
+      right,
+    })
+    const map = {
+      panBy: vi.fn(),
+      getContainer: () => ({getBoundingClientRect: () => rect(0, 800, 0, 400)}),
+    }
+    layer._map = map
+    const popup = r => ({
+      isOpen: () => true,
+      getElement: () => ({getBoundingClientRect: () => r}),
+    })
+    layer._keepPopupInView(popup(rect(20, 300)))
+    expect(map.panBy.mock.lastCall[0]).to.deep.equal([0, 20 - 84])
+    layer._keepPopupInView(popup(rect(500, 850)))
+    expect(map.panBy.mock.lastCall[0]).to.deep.equal([0, 850 - 788])
+    layer._keepPopupInView(popup(rect(200, 400, 250, 450)))
+    expect(map.panBy.mock.lastCall[0]).to.deep.equal([450 - 400 + 12, 0])
+    map.panBy.mockClear()
+    layer._keepPopupInView(popup(rect(200, 400)))
+    expect(map.panBy).not.toHaveBeenCalled()
+  })
+
   it('popup: count, groups with colour dots, place button for regular dots', () => {
     const layer = document.createElement('grampsjs-map-places-layer')
     layer.translate = (s, n) => s.replace('%s', n)

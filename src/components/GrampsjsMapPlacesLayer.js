@@ -12,6 +12,9 @@ import {
 const LAYER = 'places-layer'
 const COUNT_LAYER = 'places-count-layer'
 const SOURCE = 'places'
+// Room kept free above an open popup (the search bar) and at the sides.
+const TOP_MARGIN = 84
+const SIDE_MARGIN = 12
 
 // The places on the map as one dot each. A place can carry:
 // - `count`: the number of events there (after the filters); the dot grows
@@ -126,6 +129,33 @@ class GrampsjsMapPlacesLayer extends LitElement {
     return root
   }
 
+  // Pans the map so an open popup is fully visible and not under the
+  // search bar at the top (TOP_MARGIN).
+  _keepPopupInView(popup) {
+    const map = this._map
+    const el = popup?.getElement?.()
+    if (!map || !el || !popup.isOpen()) return
+    const box = map.getContainer().getBoundingClientRect()
+    const r = el.getBoundingClientRect()
+    const top = box.top + TOP_MARGIN
+    const bottom = box.bottom - SIDE_MARGIN
+    let dy = 0
+    if (r.top < top) dy = r.top - top
+    else if (r.bottom > bottom) dy = Math.min(r.bottom - bottom, r.top - top)
+    let dx = 0
+    if (r.left < box.left + SIDE_MARGIN) dx = r.left - box.left - SIDE_MARGIN
+    else if (r.right > box.right - SIDE_MARGIN) {
+      dx = r.right - box.right + SIDE_MARGIN
+    }
+    if (dx || dy) map.panBy([dx, dy], {duration: 300})
+  }
+
+  _afterLayout(fn) {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => fn())
+    } else fn()
+  }
+
   _openClickPopup(place, coords) {
     this._detailsPopup.remove()
     this._popup.remove()
@@ -144,7 +174,11 @@ class GrampsjsMapPlacesLayer extends LitElement {
         this._popupContent(place, {loading: Boolean(place.loadDetails)})
       )
       .addTo(this._map)
-    if (!place.loadDetails) return
+    const opened = this._clickPopup
+    if (!place.loadDetails) {
+      this._afterLayout(() => this._keepPopupInView(opened))
+      return
+    }
     this._detailsToken += 1
     const token = this._detailsToken
     const popup = this._clickPopup
@@ -153,6 +187,7 @@ class GrampsjsMapPlacesLayer extends LitElement {
       .then(groups => {
         if (token !== this._detailsToken || !popup.isOpen()) return
         popup.setDOMContent(this._popupContent(place, {groups}))
+        this._afterLayout(() => this._keepPopupInView(popup))
       })
       .catch(() => {
         if (token !== this._detailsToken || !popup.isOpen()) return
