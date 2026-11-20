@@ -221,8 +221,6 @@ class GrampsjsMap extends GrampsjsAppStateMixin(LitElement) {
           border-radius: 12px;
           font-size: 13px;
           line-height: 1.45;
-          max-height: 40vh;
-          overflow-y: auto;
           background: var(--md-sys-color-surface-container-high);
           color: var(--md-sys-color-on-surface);
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
@@ -231,6 +229,11 @@ class GrampsjsMap extends GrampsjsAppStateMixin(LitElement) {
           display: block;
           font-weight: 500;
           margin-bottom: 2px;
+        }
+        .grampsjs-place-details-popup .lines {
+          max-height: min(30vh, 260px);
+          overflow-y: auto;
+          overscroll-behavior: contain;
         }
         .grampsjs-place-details-popup .sub {
           font-size: 12px;

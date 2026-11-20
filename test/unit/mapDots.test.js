@@ -228,6 +228,18 @@ describe('popup lines of a regular dot', () => {
   })
 })
 
+describe('popup line text', () => {
+  it('drops the comma of a missing surname or given name', async () => {
+    const {pinEntryText, cleanName} = await import('../../src/mapAncestors.js')
+    expect(cleanName(', Elizabeth')).to.equal('Elizabeth')
+    expect(cleanName('Muster, ')).to.equal('Muster')
+    expect(cleanName('Muster, Anna')).to.equal('Muster, Anna')
+    expect(
+      pinEntryText({names: [', Marie', ''], typeLabel: 'Birth', year: null})
+    ).to.equal('Marie · Birth')
+  })
+})
+
 describe('ancestor popup groups', () => {
   it('groups lines by generation, nearest first, far ones together', () => {
     const groups = groupByGeneration(

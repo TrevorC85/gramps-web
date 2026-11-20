@@ -88,6 +88,9 @@ class GrampsjsMapPlacesLayer extends LitElement {
       div.textContent = this._t('Error')
       root.appendChild(div)
     }
+    // the lines scroll, title and button stay
+    const list = document.createElement('div')
+    list.className = 'lines'
     for (const group of groups ?? []) {
       if (group.label) {
         const head = document.createElement('div')
@@ -99,15 +102,16 @@ class GrampsjsMapPlacesLayer extends LitElement {
           head.appendChild(dot)
         }
         head.appendChild(document.createTextNode(group.label))
-        root.appendChild(head)
+        list.appendChild(head)
       }
       for (const line of group.lines ?? []) {
         const div = document.createElement('div')
         div.className = 'line'
         div.textContent = line
-        root.appendChild(div)
+        list.appendChild(div)
       }
     }
+    if (list.childNodes.length) root.appendChild(list)
     if (place.loadDetails) {
       const button = document.createElement('button')
       button.type = 'button'
@@ -129,6 +133,8 @@ class GrampsjsMapPlacesLayer extends LitElement {
     this._clickPopup = new maplibregl.Popup({
       closeButton: true,
       closeOnClick: true,
+      // focusing the place button would scroll the list to its end
+      focusAfterOpen: false,
       offset: 15,
       maxWidth: '320px',
       className: 'grampsjs-place-details-popup',

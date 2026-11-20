@@ -112,8 +112,17 @@ export function ancestorPins(data, {years = null, eventTypes = []} = {}) {
 
 // One line of a pin's popup, e.g. "Example, Joy · Birth · 1928" (names can
 // contain commas, so the parts are separated by middle dots).
+// A display name without the comma of a missing surname or given name
+// (", Elizabeth" -> "Elizabeth").
+export function cleanName(name) {
+  return String(name ?? '')
+    .replace(/^\s*,\s*/, '')
+    .replace(/\s*,\s*$/, '')
+}
+
 export function pinEntryText(entry) {
-  return [entry.names.join(' & '), entry.typeLabel, entry.year]
+  const names = (entry.names ?? []).map(cleanName).filter(Boolean)
+  return [names.join(' & '), entry.typeLabel, entry.year]
     .filter(x => x !== null && x !== undefined && x !== '')
     .join(' · ')
 }
