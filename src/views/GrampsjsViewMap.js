@@ -47,9 +47,9 @@ import {
   ancestorCounts,
   ancestorPins,
   ancestorPlacesUrl,
-  generationColor,
   pinBounds,
   pinEntryText,
+  pinLegend,
 } from '../mapAncestors.js'
 
 const EMPTY_ARRAY = []
@@ -471,9 +471,7 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
       loading: on && this._ancestorLoading,
       error: on ? this._ancestorError : '',
       counts: on && data ? ancestorCounts(data, pins) : null,
-      legend: [...new Set(pins.map(pin => pin.generation))]
-        .sort((a, b) => a - b)
-        .map(generation => ({generation, color: generationColor(generation)})),
+      legend: pinLegend(pins),
     }
   }
 
@@ -512,21 +510,53 @@ export class GrampsjsViewMap extends GrampsjsStaleDataMixin(GrampsjsView) {
     this._ancestorLoading = false
     if ('data' in data) {
       this._ancestorData = data.data
-      this._fitAncestorPins()
+      this._fitAncestorPins({collapse: true})
     } else {
       this._ancestorData = null
       this._ancestorError = data.error || this._('Error')
     }
   }
 
-  _fitAncestorPins() {
+  _fitAncestorPins({collapse = false} = {}) {
     const pins = this._ancestorPins
     if (pins.length === 0) return
     if (pins.length === 1) {
       this.flyTo(pins[0].lat, pins[0].long)
       return
     }
-    this._mapEl?.fitBounds(pinBounds(pins))
+    const padding = this._panelPadding()
+    if (padding?.narrow) {
+      // the card covers most of a phone's map: fold it away to show the
+      // pins once they have loaded
+      if (collapse) this._searchbox?.collapse?.()
+      delete padding.narrow
+    }
+    this._mapEl?.fitBounds(pinBounds(pins), padding ? {padding} : {})
+  }
+
+  // Padding for fitting pins so that the search panel with the person card
+  // does not cover them: beside the panel on wide screens; on narrow ones,
+  // where it spans the map, below the search bar (narrow: true).
+  _panelPadding() {
+    const PAD = 40
+    // the search box's host has no size; its panel is positioned inside
+    const panelEl =
+      this._searchbox?.shadowRoot?.querySelector('#container') ??
+      this._searchbox
+    const panel = panelEl?.getBoundingClientRect?.()
+    const map = this.renderRoot?.querySelector?.('grampsjs-map')
+    const box = map?.getBoundingClientRect?.()
+    if (!panel || !box || !panel.width || !box.width) return null
+    const padding = {top: PAD, bottom: PAD, left: PAD, right: PAD}
+    if (panel.width < box.width / 2) {
+      padding.left = Math.max(PAD, panel.right - box.left + PAD)
+    } else {
+      // narrow: the panel is folded away (see _fitAncestorPins), leaving the
+      // search bar and the chevron to open it again
+      padding.top = Math.round(Math.min(150, box.height * 0.4))
+      padding.narrow = true
+    }
+    return padding
   }
 
   _handleLayerChange(e) {

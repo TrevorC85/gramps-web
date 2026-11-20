@@ -44,6 +44,10 @@ export function generationLabel(generation, translate) {
   if (generation === 1) return translate('Parents')
   if (generation === 2) return translate('Grandparents')
   if (generation === 3) return translate('Great-grandparents')
+  if (generation >= GENERATION_COLORS.length - 1) {
+    // the last colour is shared by all generations from here on
+    return translate('Generation %s and beyond', GENERATION_COLORS.length - 1)
+  }
   return translate('Generation %s', generation)
 }
 
@@ -106,17 +110,21 @@ export function ancestorPins(data, {years = null, eventTypes = []} = {}) {
   return pins
 }
 
-// One line of a pin's popup, e.g. "Joy Example, Birth, 1928".
+// One line of a pin's popup, e.g. "Example, Joy · Birth · 1928" (names can
+// contain commas, so the parts are separated by middle dots).
 export function pinEntryText(entry) {
   return [entry.names.join(' & '), entry.typeLabel, entry.year]
     .filter(x => x !== null && x !== undefined && x !== '')
-    .join(', ')
+    .join(' · ')
 }
 
-// The generations present in the data, for the legend.
-export function generationsPresent(data) {
-  const gens = new Set((data?.people ?? []).map(p => p.generation))
-  return [...gens].sort((a, b) => a - b)
+// The legend for pins: one entry per colour shown, nearest first.
+export function pinLegend(pins) {
+  const last = GENERATION_COLORS.length - 1
+  const gens = new Set((pins ?? []).map(p => Math.min(p.generation, last)))
+  return [...gens]
+    .sort((a, b) => a - b)
+    .map(generation => ({generation, color: generationColor(generation)}))
 }
 
 // Bounds [[west, south], [east, north]] of pins, or null without pins.

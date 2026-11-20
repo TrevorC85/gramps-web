@@ -10,6 +10,7 @@ import {
   generationLabel,
   pinBounds,
   pinEntryText,
+  pinLegend,
 } from '../../src/mapAncestors.js'
 import {GrampsjsViewMap} from '../../src/views/GrampsjsViewMap.js'
 import '../../src/components/GrampsjsPersonBox.js'
@@ -145,6 +146,8 @@ describe('mapAncestors helpers', () => {
     expect(generationLabel(2, t)).to.equal('Grandparents')
     expect(generationLabel(3, t)).to.equal('Great-grandparents')
     expect(generationLabel(6, t)).to.equal('Generation 6')
+    expect(generationLabel(7, t)).to.equal('Generation 7 and beyond')
+    expect(generationLabel(12, t)).to.equal('Generation 7 and beyond')
   })
 
   it('makes one pin per place with coordinates', () => {
@@ -157,8 +160,8 @@ describe('mapAncestors helpers', () => {
     expect(alpha.generation).to.equal(0)
     expect(alpha.color).to.equal(generationColor(0))
     expect(alpha.entries.map(pinEntryText)).to.deep.equal([
-      'Anna Muster, Birth, 1950',
-      'Otto Muster & Olga Muster, Marriage, 1945',
+      'Anna Muster · Birth · 1950',
+      'Otto Muster & Olga Muster · Marriage · 1945',
     ])
     const beta = pins.find(p => p.handle === 'P2')
     expect(beta.color).to.equal(generationColor(2))
@@ -189,7 +192,7 @@ describe('mapAncestors helpers', () => {
   it('writes popup lines without missing parts', () => {
     expect(
       pinEntryText({names: ['Mia'], typeLabel: 'Birth', year: null})
-    ).to.equal('Mia, Birth')
+    ).to.equal('Mia · Birth')
   })
 
   it('computes bounds of the pins', () => {
@@ -198,6 +201,17 @@ describe('mapAncestors helpers', () => {
       [18.4, 48.1],
     ])
     expect(pinBounds([])).to.equal(null)
+  })
+
+  it('makes one legend entry per colour shown', () => {
+    const legend = pinLegend([
+      {generation: 9},
+      {generation: 0},
+      {generation: 7},
+      {generation: 2},
+    ])
+    expect(legend.map(l => l.generation)).to.deep.equal([0, 2, 7])
+    expect(legend[2].color).to.equal(GENERATION_COLORS.at(-1))
   })
 
   it('counts ancestors, places shown and places left off', () => {
@@ -260,6 +274,65 @@ beforeEach(() => {
 })
 
 describe('map view: show ancestors', () => {
+  it('pads the fit so the search panel does not cover pins', () => {
+    const {view} = makeView()
+    view._searchbox.getBoundingClientRect = () => ({
+      left: 16,
+      right: 400,
+      top: 70,
+      bottom: 500,
+      width: 384,
+    })
+    Object.defineProperty(view, 'renderRoot', {
+      value: {
+        querySelector: () => ({
+          getBoundingClientRect: () => ({
+            left: 0,
+            top: 0,
+            width: 1200,
+            height: 800,
+          }),
+        }),
+      },
+    })
+    expect(view._panelPadding()).to.deep.equal({
+      top: 40,
+      bottom: 40,
+      left: 440,
+      right: 40,
+    })
+    // a phone: the panel spans the width, pad below it
+    view._searchbox.getBoundingClientRect = () => ({
+      left: 8,
+      right: 404,
+      top: 60,
+      bottom: 400,
+      width: 396,
+    })
+    view.renderRoot.querySelector = () => ({
+      getBoundingClientRect: () => ({left: 0, top: 0, width: 412, height: 800}),
+    })
+    expect(view._panelPadding()).to.deep.equal({
+      top: 150,
+      bottom: 40,
+      left: 40,
+      right: 40,
+      narrow: true,
+    })
+    // fitting folds the card away and passes the padding to the map
+    view._searchbox.collapse = vi.fn()
+    view._ancestorsOn = true
+    view._selection = {type: 'person', person: PERSON, placeHandles: []}
+    view._ancestorData = DATA
+    view._fitAncestorPins()
+    expect(view._searchbox.collapse).not.toHaveBeenCalled()
+    view._fitAncestorPins({collapse: true})
+    expect(view._searchbox.collapse).toHaveBeenCalled()
+    expect(view._mapEl.fitBounds.mock.lastCall[1]).to.deep.equal({
+      padding: {top: 150, bottom: 40, left: 40, right: 40},
+    })
+  })
+
   it("is off by default: only the person's own places", async () => {
     const {view} = makeView()
     await selectPerson(view)
@@ -283,9 +356,11 @@ describe('map view: show ancestors', () => {
     const alpha = places.find(p => p.handle === 'P1')
     expect(alpha.color).to.equal(generationColor(0))
     expect(alpha.details).to.include(
-      'Otto Muster & Olga Muster, Marriage, 1945'
+      'Otto Muster & Olga Muster · Marriage · 1945'
     )
-    expect(map.fitBounds).toHaveBeenLastCalledWith([
+    // no panel size known here: no padding of its own
+    expect(map.fitBounds.mock.lastCall[1]).to.deep.equal({})
+    expect(map.fitBounds.mock.lastCall[0]).to.deep.equal([
       [11.5, -33.9],
       [18.4, 48.1],
     ])

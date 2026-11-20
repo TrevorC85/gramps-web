@@ -1124,6 +1124,7 @@ export const grampsStrings = [
   'Grandparents',
   'Great-grandparents',
   'Generation %s',
+  'Generation %s and beyond',
   '%s ancestors',
   '%s places on the map',
   '%s places left off the map: no coordinates yet',

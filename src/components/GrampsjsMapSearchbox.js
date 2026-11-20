@@ -636,6 +636,12 @@ class GrampsjsMapSearchbox extends GrampsjsAppStateMixin(LitElement) {
     this._collapsed = false
   }
 
+  // Folds the panel away on narrow screens, where it covers the map (the
+  // chevron below the search bar opens it again); no effect on wide ones.
+  collapse() {
+    this._collapsed = true
+  }
+
   showDetails() {
     this._panelState = PANEL_DETAILS
   }
